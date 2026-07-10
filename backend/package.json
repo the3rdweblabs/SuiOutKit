@@ -23,7 +23,7 @@
     "grpc"
   ],
   "author": "SuiOutKit Team",
-  "license": "GPL-3.0",
+  "license": "AGPL-3.0-only-or-later",
   "dependencies": {
     "@mysten/payment-kit": "^0.2.3",
     "@mysten/sui": "^2.19.0",
