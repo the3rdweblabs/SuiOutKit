@@ -45,6 +45,14 @@ Unversioned paths on the same host (not under `/v1/`):
 | `POST` | `/v1/checkout/crypto/intent` |
 | `POST` | `/v1/checkout/crypto/confirm` |
 
+### OPay Callback (browser redirect)
+
+| Method | Path |
+|--------|------|
+| `GET` | `/v1/checkout/opay/callback` |
+
+After OPay authorization, Flutterwave redirects the user's browser to this route. The backend verifies the transaction, marks the checkout settled, and redirects to the merchant's origin. The URL is derived from `PUBLIC_URL`.
+
 ### Payments (SDK - SSE)
 
 | Method | Path |

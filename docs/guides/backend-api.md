@@ -43,7 +43,7 @@ Start a payment flow. Body:
 
 Methods: `bank_transfer` | `opay` | `stripe`
 
-Returns a provider-specific payload: virtual account details, validated FX rate for `bank_transfer`, an OPay instruction for `opay`, or a Stripe `clientSecret` and public key for `stripe`.
+Returns a provider-specific payload: virtual account details and validated FX rate for `bank_transfer`, an `opayAuthorizationUrl` redirect for `opay`, or a Stripe `clientSecret` and public key for `stripe`.
 
 Common response codes for this endpoint:
 
@@ -78,6 +78,14 @@ Body: `{ "token", "method?", "coinType?" }` - prepares wallet/outPay intent for 
 ### `POST /v1/checkout/crypto/confirm`
 
 Body: `{ "nonce", "txDigest", "method?" }` - verifies on-chain payment.
+
+## OPay Callback
+
+### `GET /v1/checkout/opay/callback`
+
+Browser redirect target after OPay authorization completes. Flutterwave redirects the user back to this route with query parameters (`status`, `tx_ref`, `transaction_id`, etc.). The backend verifies the transaction, marks the checkout settled, and returns an HTML redirect page pointing the user back to the merchant's origin.
+
+The callback URL is constructed from the `PUBLIC_URL` environment variable (e.g. `https://api.suioutkit.xyz/v1/checkout/opay/callback`). For local development, set `PUBLIC_URL=http://localhost:5000`.
 
 ## Webhooks (server only)
 

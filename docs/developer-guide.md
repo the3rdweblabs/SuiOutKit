@@ -134,10 +134,14 @@ Performs a treasury pre-flight check using the current rate before the user proc
 The backend uses the following variables from [`backend/.env`](/backend/.env):
 
 - `PORT`
+- `PUBLIC_URL` - public base URL for OPay callback redirect (default `http://localhost:5000`)
 - `REDIS_MODE` - `local` (standalone Redis) or `live` (Upstash/REST)
 - `REDIS_URL` - connection string (used in `local` mode)
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_TLS_ENABLED` - Redis config for `local` mode
 - `SESSION_TTL` - checkout session expiry in seconds
+- `STRIPE_PUBLIC_KEY`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
 - `FLW_API_BASE`
 - `FLW_PUBLIC_KEY`
 - `FLW_SECRET_KEY`
@@ -160,6 +164,7 @@ The backend uses the following variables from [`backend/.env`](/backend/.env):
 - `DEFAULT_COIN` - default settlement coin symbol (default `SUI`)
 - `SETTLEMENT_TOKEN_TYPE` - legacy fallback when `SUPPORTED_COINS` is not set
 - `FIAT_REGISTRY_ID`
+- `FIAT_REGISTRY_NAME` - registry name string (e.g. `suioutkit-fiat-settlements`)
 - `FIAT_REGISTRY_ADMIN_CAP_ID`
 - `CRYPTO_REGISTRY_ID`
 - `CRYPTO_REGISTRY_NAME`

@@ -12,6 +12,7 @@ Configure these values in `backend/.env` (see [`backend/.env.example`](/backend/
 | Variable | Description |
 |----------|-------------|
 | `PORT` | HTTP port (default `5000`) |
+| `PUBLIC_URL` | Public-facing base URL used for OPay callback redirect (`/v1/checkout/opay/callback`). Defaults to `http://localhost:5000`. Set to your production host (e.g. `https://api.suioutkit.xyz`). |
 | `REDIS_MODE` | `local` (standalone Redis via `ioredis`) or `live` (Upstash REST) |
 | `REDIS_URL` | Redis connection string (used when `REDIS_MODE=local`) |
 | `REDIS_HOST`, `REDIS_PORT` | Redis host/port override (optional, default `localhost:6379`) |
