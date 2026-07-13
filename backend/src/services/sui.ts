@@ -9,14 +9,13 @@ import { Transaction } from "@mysten/sui/transactions";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 import { paymentKit } from "@mysten/payment-kit";
-import { SuiJsonRpcClient } from "@mysten/sui/jsonRpc";
 import { getEnv } from "../config/env.js";
 import { getDefaultCoin } from "../config/coins.js";
 
 // Contract Object IDs and config loaded safely from environment
 const SUI_NETWORK = getEnv("SUI_NETWORK", "testnet") as any;
 const SUI_GRPC_ENDPOINT = getEnv(`SUI_GRPC_ENDPOINT_${SUI_NETWORK}`) || getEnv("SUI_GRPC_ENDPOINT", `https://fullnode.${SUI_NETWORK}.sui.io:443`);
-const SUI_RPC_ENDPOINT = getEnv(`SUI_RPC_ENDPOINT_${SUI_NETWORK}`) || getEnv("SUI_RPC_ENDPOINT", `https://fullnode.${SUI_NETWORK}.sui.io:443`);
+const SUI_GRAPHQL_ENDPOINT = getEnv(`SUI_GRAPHQL_ENDPOINT_${SUI_NETWORK}`) || getEnv("SUI_GRAPHQL_ENDPOINT", `https://graphql.${SUI_NETWORK}.sui.io/graphql`);
 const SUI_OPERATOR_PRIVATE_KEY = getEnv("SUI_OPERATOR_PRIVATE_KEY");
 const PACKAGE_ID = getEnv(`PACKAGE_ID_${SUI_NETWORK}`);
 const TREASURY_ID = getEnv(`TREASURY_ID_${SUI_NETWORK}`);
@@ -47,7 +46,7 @@ class SuiIntegrationService {
     console.log(`SuiOutKit: Connecting to Sui gRPC Client...`);
     this.client = new SuiGrpcClient({
       network: SUI_NETWORK,
-      baseUrl: SUI_RPC_ENDPOINT
+      baseUrl: SUI_GRPC_ENDPOINT
     });
     this.paymentClient = (this.client as any).$extend(paymentKit());
 
@@ -256,7 +255,7 @@ class SuiIntegrationService {
   }
 
   /**
-   * Pre-flight check: Query Treasury balance directly via standard RPC JSON-RPC call.
+   * Pre-flight check: Query Treasury balance directly via gRPC simulation.
    * Called before showing payment interface to verify settlement will succeed.
    */
   public async checkTreasuryBalance(amount: number, tokenType: string = getDefaultCoin().type): Promise<{ available: number; required: number; sufficient: boolean }> {
@@ -268,29 +267,31 @@ class SuiIntegrationService {
     }
     try {
       console.log(`SuiOutKit: Querying treasury balance on-chain for ${tokenType} with required ${amount}...`);
-      // Build a devInspect transaction that calls treasury::balance
+      // Build a simulation transaction that calls treasury::balance
       const inspectTx = new Transaction();
       inspectTx.moveCall({
         target: `${PACKAGE_ID}::treasury::balance`,
         typeArguments: [tokenType],
         arguments: [inspectTx.object(TREASURY_ID)]
       });
-      const client = new SuiJsonRpcClient({ url: SUI_RPC_ENDPOINT, network: SUI_NETWORK as any });
-      const devInspect = await client.devInspectTransactionBlock({
-        sender: this.keypair.getPublicKey().toSuiAddress(),
-        transactionBlock: inspectTx
+      inspectTx.setSender(this.keypair.getPublicKey().toSuiAddress());
+      const simulation = await this.client.simulateTransaction({
+        transaction: inspectTx,
+        include: { commandResults: true, effects: true },
+        checksEnabled: false,
       });
-      if (devInspect.error) {
-        console.warn(`SuiOutKit: DevInspect error querying treasury: ${devInspect.error}`);
+      const simResult = simulation.Transaction || simulation.FailedTransaction;
+      if (simulation.$kind === "FailedTransaction" || simResult?.effects?.status?.success === false) {
+        console.warn(`SuiOutKit: Simulation error querying treasury: ${simResult?.effects?.status?.error || "unknown"}`);
         return { available: 0, required: amount, sufficient: false };
       }
-      const results = devInspect.results?.[0]?.returnValues;
       let availableBalance = 0;
-      if (results && results.length > 0 && results[0][0]) {
-        const bytes = Uint8Array.from(results[0][0] as any);
+      const commandResults = simulation.commandResults;
+      if (commandResults && commandResults.length > 0 && commandResults[0].returnValues?.length > 0) {
+        const bcs = commandResults[0].returnValues[0].bcs;
         let balance = 0n;
-        for (let i = 0; i < bytes.length; i++) {
-          balance += BigInt(bytes[i]) << BigInt(8 * i);
+        for (let i = 0; i < bcs.length; i++) {
+          balance += BigInt(bcs[i]) << BigInt(8 * i);
         }
         availableBalance = Number(balance);
       }
@@ -377,40 +378,41 @@ class SuiIntegrationService {
 
   /**
    * Starts a high-speed gRPC-style background listener for on-chain checkout events.
-   * Leverages real-time polling or websocket subscriptions.
+   * Uses GraphQL RPC for indexed, filterable event polling.
    */
   public startIndexer(onEventReceived: (event: any) => void) {
     if (!PACKAGE_ID) {
       throw new Error("Sui Indexer: PACKAGE_ID is missing from environment variables.");
     }
 
-    console.log(`SuiOutKit Indexer: Polling events for settled payments via RPC...`);
+    console.log(`SuiOutKit Indexer: Polling events via GraphQL RPC...`);
 
-    const pollEvents = (eventFilter: object, label: string) => {
-      let cursor: { txDigest: string; eventSeq: string } | null = null;
+    const pollEvents = (eventType: string, label: string) => {
+      let cursor: string | null = null;
 
-      // Init: fetch the latest event to establish a starting cursor, so old
-      // events before this point are never emitted. The cursor event itself
-      // WILL be emitted on the first data tick (it's the latest and may be new).
+      // Init: fetch the latest event to establish a starting cursor via GraphQL
       (async () => {
         try {
-          const initRes = await fetch(SUI_RPC_ENDPOINT, {
+          const initRes = await fetch(SUI_GRAPHQL_ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              method: "suix_queryEvents",
-              params: [eventFilter, null, 1, true],
+              query: `query Events($type: String!) {
+                events(filter: { type: $type }, first: 1) {
+                  nodes {
+                    transaction { digest }
+                    sequenceNumber
+                    contents { json type { repr } }
+                  }
+                  pageInfo { hasNextPage endCursor }
+                }
+              }`,
+              variables: { type: eventType },
             }),
           });
           const initData: any = await initRes.json();
-          if (initData.result?.data?.[0]) {
-            const evt = initData.result.data[0];
-            cursor = {
-              txDigest: evt.id?.txDigest || "",
-              eventSeq: evt.id?.eventSeq || "",
-            };
+          if (initData.data?.events?.pageInfo?.endCursor) {
+            cursor = initData.data.events.pageInfo.endCursor;
           }
         } catch (_) {
           // init failure is non-fatal — first data tick will have cursor=null
@@ -419,41 +421,47 @@ class SuiIntegrationService {
 
       setInterval(async () => {
         try {
-          const response = await fetch(SUI_RPC_ENDPOINT, {
+          const response = await fetch(SUI_GRAPHQL_ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              method: "suix_queryEvents",
-              params: [eventFilter, null, 50, true],
+              query: `query Events($type: String!, $after: String) {
+                events(filter: { type: $type }, first: 50, after: $after) {
+                  nodes {
+                    transaction { digest }
+                    sequenceNumber
+                    contents { json type { repr } }
+                  }
+                  pageInfo { hasNextPage endCursor }
+                }
+              }`,
+              variables: { type: eventType, after: cursor },
             }),
           });
 
           const data: any = await response.json();
-          if (data.error || !data.result) {
-            console.warn(`SuiOutKit Indexer (${label}) RPC Error:`, data.error?.message || "No result");
+          const events = data.data?.events;
+          if (!events?.nodes) {
+            if (data.errors) {
+              console.warn(`SuiOutKit Indexer (${label}) GraphQL Error:`, data.errors[0]?.message || "Unknown error");
+            }
             return;
           }
 
-          for (const evt of (data.result.data || []).reverse()) {
-            const txDigest = evt.id?.txDigest || "";
-            const eventSeq = evt.id?.eventSeq || "";
+          for (const evt of events.nodes) {
+            const txDigest = evt.transaction?.digest || "";
+            const eventSeq = String(evt.sequenceNumber ?? "");
 
-            // Skip events at or before the init cursor (already seen)
-            if (cursor && txDigest && eventSeq) {
-              const isBefore =
-                txDigest === cursor.txDigest
-                  ? eventSeq <= cursor.eventSeq
-                  : false;
-              if (isBefore) continue;
-            }
+            // Normalize event shape to match the indexer consumer in index.ts
+            onEventReceived({
+              id: { txDigest, eventSeq },
+              parsedJson: typeof evt.contents?.json === "string" ? JSON.parse(evt.contents.json) : evt.contents?.json,
+              type: evt.contents?.type?.repr || "",
+            });
 
-            onEventReceived(evt);
-
-            // Track the most recent event we've seen
-            if (txDigest && eventSeq) {
-              cursor = { txDigest, eventSeq };
+            // Track cursor for next poll
+            if (events.pageInfo?.endCursor) {
+              cursor = events.pageInfo.endCursor;
             }
           }
         } catch (e: any) {
@@ -464,14 +472,14 @@ class SuiIntegrationService {
 
     // Listen for PaymentSettled from suioutkit (sui_wallet flow calls mint_suioutkit_receipt)
     pollEvents(
-      { MoveEventType: `${PACKAGE_ID}::events::PaymentSettled` },
+      `${PACKAGE_ID}::events::PaymentSettled`,
       "PaymentSettled"
     );
 
     // Listen for PaymentReceipt from Payment Kit (outPay flow only calls processRegistryPayment)
     if (PAYMENT_KIT_PACKAGE_ID) {
       pollEvents(
-        { MoveEventType: `${PAYMENT_KIT_PACKAGE_ID}::payment_kit::PaymentReceipt` },
+        `${PAYMENT_KIT_PACKAGE_ID}::payment_kit::PaymentReceipt`,
         "PaymentReceipt"
       );
     }

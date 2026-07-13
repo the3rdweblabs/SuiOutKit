@@ -31,7 +31,7 @@ const WALRUS_EPOCHS = parsePositiveInteger(getEnv("WALRUS_EPOCHS", "5"), 5);
 const WALRUS_DELETABLE = getEnv("WALRUS_DELETABLE", "false").toLowerCase() === "true";
 const WALRUS_USE_UPLOAD_RELAY = getEnv("WALRUS_USE_UPLOAD_RELAY", "false").toLowerCase() === "true";
 const WALRUS_UPLOAD_RELAY_MAX_TIP = parsePositiveInteger(getEnv("WALRUS_UPLOAD_RELAY_MAX_TIP", "1000"), 1000);
-const SUI_RPC_ENDPOINT = getEnv(`SUI_RPC_ENDPOINT_${SUI_NETWORK}`) || getEnv("SUI_RPC_ENDPOINT", `https://fullnode.${SUI_NETWORK}.sui.io:443`);
+const SUI_GRPC_ENDPOINT = getEnv(`SUI_GRPC_ENDPOINT_${SUI_NETWORK}`) || getEnv("SUI_GRPC_ENDPOINT", `https://fullnode.${SUI_NETWORK}.sui.io:443`);
 
 function parsePositiveInteger(value: string, fallback: number): number {
   const parsed = Number.parseInt(value, 10);
@@ -74,7 +74,7 @@ class WalrusService {
 
       this.walrusClient = new SuiGrpcClient({
         network: SUI_NETWORK,
-        baseUrl: SUI_RPC_ENDPOINT
+        baseUrl: SUI_GRPC_ENDPOINT
       }).$extend(walrus({ uploadRelay }));
     }
   }

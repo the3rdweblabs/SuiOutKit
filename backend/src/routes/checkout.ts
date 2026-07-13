@@ -184,11 +184,14 @@ router.post("/charge", async (req: Request, res: Response) => {
         return res.status(400).json({ error: "Phone number is required for OPay payments." });
       }
 
-      const instruction = await flutterwaveService.chargeOPay({
+      const opayRedirectUrl = getEnv("OPAY_REDIRECT_URL", getEnv("SERVER_URL", "http://localhost:5000/v1/checkout/opay/callback"));
+
+      const { authorizationUrl } = await flutterwaveService.chargeOPay({
         txRef: session.nonce,
         amount: session.amount,
         email: `payer-${session.nonce.substring(0, 8)}@suioutkit.com`,
-        phoneNumber
+        phoneNumber,
+        redirectUrl: opayRedirectUrl
       });
 
       await redisService.updateSessionStatus(session.nonce, "PROCESSING", {
@@ -196,8 +199,8 @@ router.post("/charge", async (req: Request, res: Response) => {
         phoneNumber
       });
 
-      logger.info("CHECKOUT", `Dispatched OPay payment push prompt to ${phoneNumber} for session ${session.nonce} | Rate: ₦${currentRate}`);
-      return res.json({ status: "success", opayPrompt: instruction, validatedRate: currentRate });
+      logger.info("CHECKOUT", `Dispatched OPay redirect charge to ${phoneNumber} for session ${session.nonce} | Rate: ₦${currentRate}`);
+      return res.json({ status: "success", opayAuthorizationUrl: authorizationUrl, validatedRate: currentRate });
     } else if (method === "stripe") {
           if (session.currency === "NGN") {
             let usdToNgnRate = 1300;
@@ -761,6 +764,39 @@ router.post("/stripe-webhook", async (req: Request, res: Response) => {
     logger.error("STRIPE-WEBHOOK", `Webhook Processing Failure: ${err.message}`, err.stack);
     await redisService.updateSessionStatus(session.nonce, "PENDING", { error: err.message });
     return res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * Endpoint: GET /v1/checkout/opay/callback
+ * OPay redirect callback after user authorizes payment.
+ * Displays a simple confirmation page while the actual settlement happens via Flutterwave webhook.
+ */
+router.get("/opay/callback", (req: Request, res: Response) => {
+  const txRef = req.query.tx_ref as string;
+  const status = req.query.status as string;
+
+  if (status === "successful" && txRef) {
+    res.send(`
+      <!DOCTYPE html>
+      <html><head><title>Payment Authorized</title></head>
+      <body style="font-family:system-ui;text-align:center;padding:60px 20px;">
+        <h1>Payment Authorized</h1>
+        <p>Your OPay payment has been authorized successfully.</p>
+        <p style="color:#666;">Reference: ${txRef}</p>
+        <p>You can close this tab. The settlement is being processed automatically.</p>
+      </body></html>
+    `);
+  } else {
+    res.send(`
+      <!DOCTYPE html>
+      <html><head><title>Payment Status</title></head>
+      <body style="font-family:system-ui;text-align:center;padding:60px 20px;">
+        <h1>Payment ${status || "Unknown"}</h1>
+        <p>Your OPay payment status: ${status || "unknown"}.</p>
+        <p style="color:#666;">Reference: ${txRef || "N/A"}</p>
+      </body></html>
+    `);
   }
 });
 

@@ -3,66 +3,53 @@
 // Copyright (c) 2026 The3rdWebLabs (https://github.com/the3rdweblabs)
 // Author: @CYBWithFlourish (https://github.com/CYBWithFlourish)
 
-import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from "@mysten/sui/jsonRpc";
+import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction } from "@mysten/sui/transactions";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
-import fetch from "node-fetch";
 import { getEnv } from "../config/env.js";
 import { getDefaultCoin, getSupportedCoinList, getCoinConfig, getDecimals } from "../config/coins.js";
 
 // Load configuration
 const SUI_NETWORK = getEnv("SUI_NETWORK", "testnet") as any;
-const SUI_RPC_ENDPOINT = getEnv(`SUI_RPC_ENDPOINT_${SUI_NETWORK}`) || getEnv("SUI_RPC_ENDPOINT", `https://fullnode.${SUI_NETWORK}.sui.io:443`);
+const SUI_GRPC_ENDPOINT = getEnv(`SUI_GRPC_ENDPOINT_${SUI_NETWORK}`) || getEnv("SUI_GRPC_ENDPOINT", `https://fullnode.${SUI_NETWORK}.sui.io:443`);
 const PACKAGE_ID = getEnv(`PACKAGE_ID_${SUI_NETWORK}`);
 const TREASURY_ID = getEnv(`TREASURY_ID_${SUI_NETWORK}`);
 const SUI_OPERATOR_PRIVATE_KEY = getEnv("SUI_OPERATOR_PRIVATE_KEY");
 
 const TREASURY_ADMIN_CAP_ID = getEnv(`TREASURY_ADMIN_CAP_ID_${SUI_NETWORK}`, "");
 
-async function findCoin(client: SuiJsonRpcClient, address: string, coinType: string, amount: bigint): Promise<string> {
-  const response = await fetch(SUI_RPC_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "suix_getCoins",
-      params: [address, coinType, null, 50]
-    })
+async function findCoin(client: SuiGrpcClient, address: string, coinType: string, amount: bigint): Promise<string> {
+  const result = await client.listCoins({
+    owner: address,
+    coinType,
+    limit: 50,
   });
-  const resData: any = await response.json();
-  const coins = resData.result?.data || [];
+  const coins = result.objects || [];
   if (coins.length === 0) {
     throw new Error(`No ${coinType} coins found in operator wallet.`);
   }
   const coin = coins.find((c: any) => BigInt(c.balance) >= amount) || coins[0];
-  console.log(`Using coin ${coin.coinObjectId} with balance ${coin.balance}`);
-  return coin.coinObjectId;
+  console.log(`Using coin ${coin.objectId} with balance ${coin.balance}`);
+  return coin.objectId;
 }
 
-async function getTreasuryAdminCap(client: SuiJsonRpcClient, address: string): Promise<string> {
+async function getTreasuryAdminCap(client: SuiGrpcClient, address: string): Promise<string> {
   if (TREASURY_ADMIN_CAP_ID) return TREASURY_ADMIN_CAP_ID;
 
   console.log(`Scanning wallet ${address} for TreasuryAdminCap...`);
-  const response = await fetch(SUI_RPC_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "suix_getOwnedObjects",
-      params: [address, { filter: { StructType: `${PACKAGE_ID}::treasury::TreasuryAdminCap` } }]
-    })
+  const result = await client.listOwnedObjects({
+    owner: address,
+    type: `${PACKAGE_ID}::treasury::TreasuryAdminCap`,
+    limit: 1,
   });
-  const resData: any = await response.json();
-  const data = resData.result?.data || [];
+  const data = result.objects || [];
   if (data.length === 0) {
     throw new Error("Could not find a TreasuryAdminCap in your wallet. Are you the admin?");
   }
-  const capId = data[0].data?.objectId;
+  const capId = data[0].objectId;
   console.log(`Found TreasuryAdminCap: ${capId}`);
-  return capId!;
+  return capId;
 }
 
 async function main() {
@@ -83,8 +70,11 @@ async function main() {
     process.exit(1);
   }
 
-  // Initialize client and keypair
-  const client = new SuiJsonRpcClient({ url: SUI_RPC_ENDPOINT, network: SUI_NETWORK });
+  // Initialize gRPC client and keypair
+  const client = new SuiGrpcClient({
+    network: SUI_NETWORK,
+    baseUrl: SUI_GRPC_ENDPOINT,
+  });
   let keypair: Ed25519Keypair;
   if (SUI_OPERATOR_PRIVATE_KEY.startsWith("suiprivkey1")) {
     const { secretKey } = decodeSuiPrivateKey(SUI_OPERATOR_PRIVATE_KEY) as any;
@@ -108,20 +98,22 @@ async function main() {
         arguments: [inspectTx.object(TREASURY_ID)]
       });
       inspectTx.setSender(adminAddress);
-      const devInspect = await client.devInspectTransactionBlock({
-        sender: adminAddress,
-        transactionBlock: inspectTx
+      const simulation = await client.simulateTransaction({
+        transaction: inspectTx,
+        include: { commandResults: true, effects: true },
+        checksEnabled: false,
       });
-      if (devInspect.error) {
-        console.error(`Failed to inspect balance for ${coin.symbol}: ${devInspect.error}`);
+      const simResult = simulation.Transaction || simulation.FailedTransaction;
+      if (simulation.$kind === "FailedTransaction" || simResult?.effects?.status?.success === false) {
+        console.error(`Failed to inspect balance for ${coin.symbol}: ${simResult?.effects?.status?.error || "unknown"}`);
         continue;
       }
-      const results = devInspect.results?.[0]?.returnValues;
-      if (results && results.length > 0 && results[0][0]) {
-        const bytes = Uint8Array.from(results[0][0] as any);
+      const commandResults = simulation.commandResults;
+      if (commandResults && commandResults.length > 0 && commandResults[0].returnValues?.length > 0) {
+        const bcs = commandResults[0].returnValues[0].bcs;
         let balance: bigint = 0n;
-        for (let i = 0; i < bytes.length; i++) {
-          balance += BigInt(bytes[i]) << BigInt(8 * i);
+        for (let i = 0; i < bcs.length; i++) {
+          balance += BigInt(bcs[i]) << BigInt(8 * i);
         }
         console.log(`  ${coin.symbol}: ${Number(balance) / 10 ** coin.decimals} (raw: ${balance})`);
       } else {
@@ -174,20 +166,27 @@ async function main() {
 
   console.log("Signing and executing transaction...");
   try {
-    const dryRun = await client.dryRunTransactionBlock({ transactionBlock: await tx.build({ client }) });
-    if (dryRun.effects?.status?.status === "failure") {
-      console.error("❌ Dry run failed:", dryRun.effects?.status?.error);
+    // Dry-run via gRPC simulation
+    const dryRun = await client.simulateTransaction({
+      transaction: tx,
+      include: { effects: true },
+    });
+    const dryResult = dryRun.Transaction || dryRun.FailedTransaction;
+    if (dryResult?.effects?.status?.success === false) {
+      console.error("❌ Dry run failed:", dryResult.effects?.status?.error);
       return;
     }
+    // Execute via gRPC
     const response = await client.signAndExecuteTransaction({
       signer: keypair,
       transaction: tx,
-      options: { showEffects: true }
+      include: { effects: true },
     });
-    if (response.effects?.status?.status === "success") {
-      console.log(`✅ Success! Tx Digest: ${response.digest}`);
+    const txResult = response.Transaction || response.FailedTransaction;
+    if (txResult?.effects?.status?.success) {
+      console.log(`✅ Success! Tx Digest: ${txResult.digest}`);
     } else {
-      console.error("❌ Transaction failed:", response.effects?.status?.error || response);
+      console.error("❌ Transaction failed:", txResult?.effects?.status?.error || response);
     }
   } catch (err: any) {
     console.error("❌ Execution error:", err.message);

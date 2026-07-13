@@ -15,6 +15,7 @@ export interface CreateChargeParams {
   amount: number;
   email: string;
   phoneNumber?: string;
+  redirectUrl?: string;
 }
 
 type FlutterwaveErrorCode = "FLW_CONFIG_ERROR" | "FLW_AUTH_ERROR" | "FLW_PROVIDER_ERROR";
@@ -128,9 +129,10 @@ class FlutterwaveService {
   }
 
   /**
-   * Charges the user's OPay wallet by registering the direct mobile payment prompt.
+   * Initiates an OPay charge via Flutterwave redirect flow.
+   * Returns the authorization redirect URL the user must visit to approve the payment.
    */
-  public async chargeOPay(params: CreateChargeParams): Promise<string> {
+  public async chargeOPay(params: CreateChargeParams): Promise<{ authorizationUrl: string }> {
     this.assertValidConfig();
 
     try {
@@ -147,14 +149,15 @@ class FlutterwaveService {
           currency: "NGN",
           email: params.email,
           phone_number: params.phoneNumber,
-          name: "SuiOutKit OPay Payer"
+          fullname: "SuiOutKit Checkout Payer",
+          redirect_url: params.redirectUrl
         })
       });
 
       const result = await this.readJsonResponse(response);
 
-      if (result.status === "success") {
-        return result.meta?.authorization?.instruction || "Follow the prompt on your mobile wallet screen.";
+      if (result.status === "success" && result.data?.meta?.authorization?.redirect) {
+        return { authorizationUrl: result.data.meta.authorization.redirect };
       }
 
       throw this.toProviderError("OPay charge", response, result);
