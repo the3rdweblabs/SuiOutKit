@@ -51,7 +51,7 @@ export interface VirtualAccount {
 export interface ChargeResponse {
   status: "success" | "pending" | "error";
   virtualAccount?: VirtualAccount;
-  opayPrompt?: string;
+  opayAuthorizationUrl?: string;
   clientSecret?: string;
   stripePublicKey?: string;
   message?: string;

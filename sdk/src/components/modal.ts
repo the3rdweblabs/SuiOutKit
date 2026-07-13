@@ -6,6 +6,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction } from "@mysten/sui/transactions";
+import { fromBase64 } from "@mysten/utils";
 import { createPaymentTransactionUri } from "@mysten/payment-kit";
 import { paymentKit } from "@mysten/payment-kit";
 import { createDAppKit } from "@mysten/dapp-kit-core";
@@ -181,7 +182,11 @@ export class SuiOutKitModal {
         if (method === "bank_transfer" && result.virtualAccount) {
           this.renderBankTransferPanel(result.virtualAccount);
         } else if (method === "opay") {
-          this.renderOPayInstructionsPanel(result.opayPrompt || "Approve OPay payment prompt on your phone.");
+          if (result.opayAuthorizationUrl) {
+            window.location.href = result.opayAuthorizationUrl;
+          } else {
+            this.renderErrorPanel("OPay authorization URL not received.");
+          }
         }
       } else {
         this.renderErrorPanel(result.message || "Failed to process charge.");
@@ -785,11 +790,18 @@ export class SuiOutKitModal {
 
       tx.transferObjects([suioutkitReceipt], this.cryptoIntent.receiverAddress);
 
-      const result = await dAppKit.signAndExecuteTransaction({ transaction: tx });
+      // Sign via wallet, then execute via gRPC client — avoids dapp-kit BCS parsing bug
+      const signed = await dAppKit.signTransaction({ transaction: tx });
+      const client = dAppKit.stores.$currentClient.get() as SuiGrpcClient;
+      const result = await client.executeTransaction({
+        transaction: fromBase64(signed.bytes),
+        signatures: [signed.signature],
+        include: { effects: true, events: true },
+      });
 
       if ((result as any).FailedTransaction) {
         this.renderErrorPanel(
-          `Transaction failed: ${(result as any).FailedTransaction?.status?.error?.message || "Unknown error"}`
+          `Transaction failed: ${(result as any).FailedTransaction?.effects?.status?.error || "Unknown error"}`
         );
         return;
       }
