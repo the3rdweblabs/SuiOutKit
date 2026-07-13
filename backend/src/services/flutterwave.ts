@@ -150,7 +150,9 @@ class FlutterwaveService {
           email: params.email,
           phone_number: params.phoneNumber,
           fullname: "SuiOutKit Checkout Payer",
-          redirect_url: params.redirectUrl
+          meta: {
+            redirect_url: params.redirectUrl
+          }
         })
       });
 

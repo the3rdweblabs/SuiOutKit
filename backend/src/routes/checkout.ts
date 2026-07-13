@@ -184,7 +184,8 @@ router.post("/charge", async (req: Request, res: Response) => {
         return res.status(400).json({ error: "Phone number is required for OPay payments." });
       }
 
-      const opayRedirectUrl = getEnv("OPAY_REDIRECT_URL", getEnv("SERVER_URL", "http://localhost:5000/v1/checkout/opay/callback"));
+      const publicUrl = getEnv("PUBLIC_URL", "http://localhost:5000");
+      const opayRedirectUrl = `${publicUrl}/v1/checkout/opay/callback`;
 
       const { authorizationUrl } = await flutterwaveService.chargeOPay({
         txRef: session.nonce,
