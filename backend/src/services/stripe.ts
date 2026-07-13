@@ -7,8 +7,9 @@ import Stripe from "stripe";
 import { getEnv } from "../config/env.js";
 import logger from "../utils/logger.js";
 
-const STRIPE_SECRET_KEY = getEnv("STRIPE_SECRET_KEY", "");
-const STRIPE_WEBHOOK_SECRET = getEnv("STRIPE_WEBHOOK_SECRET", "");
+const STRIPE_MODE = getEnv("STRIPE_MODE", "test");
+const STRIPE_SECRET_KEY = getEnv(`STRIPE_SECRET_KEY_${STRIPE_MODE}`) || getEnv("STRIPE_SECRET_KEY", "");
+const STRIPE_WEBHOOK_SECRET = getEnv(`STRIPE_WEBHOOK_SECRET_${STRIPE_MODE}`) || getEnv("STRIPE_WEBHOOK_SECRET", "");
 
 class StripeService {
   private stripe?: Stripe;

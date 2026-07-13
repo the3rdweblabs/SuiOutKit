@@ -21,12 +21,15 @@ const __dirname = dirname(__filename);
 
 const app = express();
 const PORT = getEnv("PORT", "5000");
+const FLW_MODE = getEnv("FLW_MODE", "test");
+const STRIPE_MODE = getEnv("STRIPE_MODE", "test");
+const SUI_NETWORK = getEnv("SUI_NETWORK", "testnet");
 
 // Enable CORS securely to allow seamless cross-origin SDK integrations
 app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "PUT", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "verif-hash"]
+  allowedHeaders: ["Content-Type", "Authorization", "verif-hash", "flutterwave-signature"]
 }));
 
 // Express parsers
@@ -161,6 +164,8 @@ const server = app.listen(PORT, () => {
   console.log(`SUIOUTKIT PAYMENT GATEWAY RUNNING ON PORT ${PORT}`);
   console.log(`Health Check: http://localhost:${PORT}/health`);
   console.log(`Stylesheet Asset: http://localhost:${PORT}/style.css`);
+  console.log(`------------------------------------------------------------------`);
+  console.log(`SUI_NETWORK: ${SUI_NETWORK} | FLW_MODE: ${FLW_MODE} | STRIPE_MODE: ${STRIPE_MODE}`);
   console.log(`==================================================================`);
 });
 

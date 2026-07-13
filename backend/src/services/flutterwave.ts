@@ -7,7 +7,8 @@ import fetch from "node-fetch";
 import { getEnv, getLoadedEnvFiles } from "../config/env.js";
 import logger from "../utils/logger.js";
 
-const FLW_SECRET_KEY = getEnv("FLW_SECRET_KEY");
+const FLW_MODE = getEnv("FLW_MODE", "test");
+const FLW_SECRET_KEY = getEnv(`FLW_SECRET_KEY_${FLW_MODE}`) || getEnv("FLW_SECRET_KEY");
 const FLW_API_BASE = getEnv("FLW_API_BASE", "https://api.flutterwave.com/v3");
 
 export interface CreateChargeParams {
@@ -68,6 +69,7 @@ class FlutterwaveService {
     bankName: string;
     amount: number;
     expirySeconds: number;
+    transactionId: number | null;
   }> {
     this.assertValidConfig();
 
@@ -112,7 +114,8 @@ class FlutterwaveService {
           accountNumber: auth.transfer_account || "9928374921",
           bankName: auth.transfer_bank || "9PSB",
           amount: parseFloat(auth.transfer_amount || params.amount.toString()),
-          expirySeconds
+          expirySeconds,
+          transactionId: result.data?.id || null
         };
       }
 
@@ -169,6 +172,52 @@ class FlutterwaveService {
         ? err
         : new FlutterwaveServiceError(
           `Flutterwave OPay Charge Error: ${err.message || "Unable to reach Flutterwave."}`,
+          "FLW_PROVIDER_ERROR"
+        );
+    }
+  }
+
+  /**
+   * Verifies a transaction by ID with Flutterwave.
+   * Returns the transaction details including status.
+   */
+  public async verifyTransaction(transactionId: number): Promise<{
+    status: string;
+    id: number;
+    tx_ref: string;
+    amount: number;
+    currency: string;
+  }> {
+    this.assertValidConfig();
+
+    try {
+      const response = await fetch(`${FLW_API_BASE}/transactions/${transactionId}/verify`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${FLW_SECRET_KEY}`,
+          Accept: "application/json"
+        }
+      });
+
+      const result = await this.readJsonResponse(response);
+
+      if (result.status === "success" && result.data) {
+        return {
+          status: result.data.status,
+          id: result.data.id,
+          tx_ref: result.data.tx_ref,
+          amount: result.data.amount,
+          currency: result.data.currency
+        };
+      }
+
+      throw this.toProviderError("Transaction verify", response, result);
+    } catch (err: any) {
+      this.logError("verifyTransaction", err);
+      throw err instanceof FlutterwaveServiceError
+        ? err
+        : new FlutterwaveServiceError(
+          `Flutterwave Verify Error: ${err.message || "Unable to verify transaction."}`,
           "FLW_PROVIDER_ERROR"
         );
     }

@@ -139,13 +139,15 @@ The backend uses the following variables from [`backend/.env`](/backend/.env):
 - `REDIS_URL` - connection string (used in `local` mode)
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_TLS_ENABLED` - Redis config for `local` mode
 - `SESSION_TTL` - checkout session expiry in seconds
-- `STRIPE_PUBLIC_KEY`
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `FLW_API_BASE`
-- `FLW_PUBLIC_KEY`
-- `FLW_SECRET_KEY`
-- `FLW_HASH`
+- `STRIPE_MODE` - `test` or `live` (default `test`)
+- `STRIPE_PUBLIC_KEY_test` / `STRIPE_PUBLIC_KEY_live` - Stripe publishable key per mode
+- `STRIPE_SECRET_KEY_test` / `STRIPE_SECRET_KEY_live` - Stripe secret per mode
+- `STRIPE_WEBHOOK_SECRET_test` / `STRIPE_WEBHOOK_SECRET_live` - Stripe webhook signing secret per mode
+- `FLW_API_BASE` - Flutterwave API base URL
+- `FLW_MODE` - `test` or `live` (default `test`)
+- `FLW_PUBLIC_KEY_test` / `FLW_PUBLIC_KEY_live` - Flutterwave public key per mode
+- `FLW_SECRET_KEY_test` / `FLW_SECRET_KEY_live` - Flutterwave secret per mode
+- `FLW_HASH_test` / `FLW_HASH_live` - Webhook verification hash per mode
 - `WALRUS_UPLOAD_MODE`
 - `WALRUS_EPOCHS`
 - `WALRUS_DELETABLE`

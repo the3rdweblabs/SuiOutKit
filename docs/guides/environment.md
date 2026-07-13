@@ -36,20 +36,32 @@ Operator-only values (Sui keys, WALRUS keys, provider secrets) are required for 
 
 ## Payment providers
 
+Provider keys use a **mode prefix** pattern (like `SUI_NETWORK`). Set `FLW_MODE` or `STRIPE_MODE` to `test` or `live`, then provide suffixed keys. Flat (un-suffixed) vars are supported as a backward-compatible fallback.
+
+### Flutterwave
+
 | Variable | Description |
 |----------|-------------|
+| `FLW_MODE` | `test` or `live` (default `test`) |
 | `FLW_API_BASE` | Flutterwave API base URL |
-| `FLW_PUBLIC_KEY` | Flutterwave public key |
-| `FLW_SECRET_KEY` | Flutterwave secret |
-| `FLW_HASH` | Webhook verification hash |
-| `STRIPE_PUBLIC_KEY` | Stripe publishable key |
-| `STRIPE_SECRET_KEY` | Stripe secret |
-| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret |
+| `FLW_PUBLIC_KEY_test` / `FLW_PUBLIC_KEY_live` | Flutterwave public key per mode |
+| `FLW_SECRET_KEY_test` / `FLW_SECRET_KEY_live` | Flutterwave secret per mode |
+| `FLW_HASH_test` / `FLW_HASH_live` | Webhook verification hash per mode |
+
+### Stripe
+
+| Variable | Description |
+|----------|-------------|
+| `STRIPE_MODE` | `test` or `live` (default `test`) |
+| `STRIPE_PUBLIC_KEY_test` / `STRIPE_PUBLIC_KEY_live` | Stripe publishable key per mode |
+| `STRIPE_SECRET_KEY_test` / `STRIPE_SECRET_KEY_live` | Stripe secret per mode |
+| `STRIPE_WEBHOOK_SECRET_test` / `STRIPE_WEBHOOK_SECRET_live` | Stripe webhook signing secret per mode |
 
 Notes:
 
-- Use Stripe test keys for development and `sk_live...` keys in production. Keep `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` server-side only.
-- For Flutterwave, `FLW_SECRET_KEY` should start with `FLWSECK` (Test or Live). `FLW_HASH` is used to validate incoming webhooks.
+- Suffixed vars take priority. If `FLW_SECRET_KEY_test` is set and `FLW_MODE=test`, that value is used. If absent, falls back to flat `FLW_SECRET_KEY`.
+- Use Stripe test keys for development and `sk_live...` keys in production. Keep secret keys server-side only.
+- For Flutterwave, secret keys should start with `FLWSECK` (Test or Live). `FLW_HASH` is used to validate incoming webhooks.
 
 ## Sui
 

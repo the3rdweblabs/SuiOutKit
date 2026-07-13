@@ -51,7 +51,7 @@ router.post("/session", rateLimiter, async (req: Request, res: Response) => {
     const nonce = crypto.randomUUID();
     const token = crypto.randomBytes(32).toString("hex");
 
-    // Resolve coinType — validate against supported list
+    // Resolve coinType - validate against supported list
     const defaultCoin = getDefaultCoin();
     const requestedCoin = coinType || defaultCoin.type;
     const coinCfg = getCoinConfig(requestedCoin);
@@ -174,8 +174,16 @@ router.post("/charge", async (req: Request, res: Response) => {
       // Save billing details in Redis session
       await redisService.updateSessionStatus(session.nonce, "PENDING", {
         method: "bank_transfer",
-        virtualAccount: va
+        virtualAccount: va,
+        flwTransactionId: va.transactionId
       });
+
+      // Start background polling to verify transaction (backup for webhooks)
+      if (va.transactionId) {
+        startTransactionPolling(session.nonce, va.transactionId, currentRate, sessionCoinType).catch((err: any) => {
+          logger.warn("CHECKOUT", `Transaction polling failed for ${session.nonce}: ${err.message}`);
+        });
+      }
 
       logger.info("CHECKOUT", `Allocated dynamic virtual account for session ${session.nonce}: ${va.bankName} ${va.accountNumber} | Rate: ₦${currentRate}`);
       return res.json({ status: "success", virtualAccount: va, validatedRate: currentRate });
@@ -416,7 +424,7 @@ router.post("/crypto/confirm", async (req: Request, res: Response) => {
       walrusAlreadyStored = resolved.alreadyStored;
     }
 
-    // On-chain payment is already verified — commit Walrus blob if not yet stored
+    // On-chain payment is already verified - commit Walrus blob if not yet stored
     if (!walrusAlreadyStored && walrusBlobId) {
       try {
         await walrusService.uploadInvoice(invoiceMetadata);
@@ -800,5 +808,136 @@ router.get("/opay/callback", (req: Request, res: Response) => {
     `);
   }
 });
+
+/**
+ * Background polling to verify bank transfer transactions.
+ * Backup for webhooks - polls Flutterwave verify endpoint until transaction completes or times out.
+ */
+async function startTransactionPolling(nonce: string, transactionId: number, rate: number, coinType: string) {
+  const POLL_INTERVAL = 10_000; // 10 seconds
+  const MAX_POLLS = 180; // 30 minutes
+  const MAX_WAIT = POLL_INTERVAL * MAX_POLLS;
+
+  logger.info("POLL", `Starting transaction polling for nonce ${nonce}, txId ${transactionId}`);
+
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < MAX_WAIT) {
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+
+    // Check if session was already processed (by webhook or previous poll)
+    const session = await redisService.getSession(nonce);
+    if (!session || session.status === "SETTLED" || session.status === "PROCESSING") {
+      logger.info("POLL", `Session ${nonce} already ${session?.status || "expired"}, stopping poll.`);
+      return;
+    }
+
+    try {
+      const tx = await flutterwaveService.verifyTransaction(transactionId);
+      logger.info("POLL", `Transaction ${transactionId} status: ${tx.status}`);
+
+      if (tx.status === "successful") {
+        // Trigger settlement - same logic as webhook handler
+        await processSettlement(nonce, tx.amount, rate, coinType);
+        return;
+      }
+
+      if (tx.status === "failed") {
+        logger.warn("POLL", `Transaction ${transactionId} failed for nonce ${nonce}`);
+        await redisService.updateSessionStatus(nonce, "EXPIRED", { error: "Payment failed" });
+        return;
+      }
+    } catch (err: any) {
+      logger.warn("POLL", `Verify call failed for nonce ${nonce}: ${err.message}`);
+    }
+  }
+
+  logger.warn("POLL", `Polling timed out for nonce ${nonce} after ${MAX_WAIT / 1000}s`);
+}
+
+/**
+ * Process settlement after payment confirmation (shared by webhook and polling).
+ */
+async function processSettlement(nonce: string, paidAmount: number, rate: number, coinType: string) {
+  const session = await redisService.getSession(nonce);
+  if (!session || session.status === "SETTLED") return;
+
+  await redisService.updateSessionStatus(nonce, "PROCESSING");
+
+  const decimals = getDecimals(coinType);
+  const settlementAmount = Math.floor((paidAmount / rate) * 10 ** decimals);
+  logger.info("SETTLE", `Processing settlement for ${nonce}: ₦${paidAmount} @ ₦${rate}/token = ${settlementAmount / 10 ** decimals} tokens`);
+
+  // Walrus blob resolution
+  const lockKey = `uploadLock:${nonce}`;
+  let walrusBlobId: string;
+  let walrusAlreadyStored = false;
+
+  const lockOwner = await redisService.acquireLock(lockKey, 30);
+  try {
+    if (!lockOwner) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const refreshed = await redisService.getSession(nonce);
+      walrusBlobId = refreshed?.walrusBlobId;
+      walrusAlreadyStored = !!walrusBlobId;
+      if (!walrusBlobId) throw new Error("Could not resolve Walrus blob ID after waiting for lock.");
+    } else {
+      if (session.walrusBlobId) {
+        walrusBlobId = session.walrusBlobId;
+        walrusAlreadyStored = true;
+      } else {
+        const invoiceMetadata = {
+          nonce: session.nonce,
+          amountNaira: paidAmount,
+          exchangeRate: rate,
+          amountSettled: settlementAmount / 10 ** decimals,
+          settlementToken: coinType,
+          merchantAddress: session.merchantAddress,
+          fiatMethod: session.method || "bank_transfer",
+          timestamp: new Date().toISOString()
+        };
+        const resolved = await walrusService.resolveBlobId(invoiceMetadata);
+        walrusBlobId = resolved.blobId;
+        walrusAlreadyStored = resolved.alreadyStored;
+      }
+    }
+  } finally {
+    if (lockOwner) await redisService.releaseLock(lockKey, lockOwner);
+  }
+
+  // Sui settlement
+  const onChainResult = await suiService.executeSettleFiat(
+    settlementAmount,
+    session.merchantAddress,
+    session.nonce,
+    walrusBlobId,
+    coinType
+  );
+
+  // Commit blob if SDK mode
+  if (!walrusAlreadyStored && walrusBlobId) {
+    try {
+      const invoiceMetadata = {
+        nonce: session.nonce,
+        amountNaira: paidAmount,
+        exchangeRate: rate,
+        amountSettled: settlementAmount / 10 ** decimals,
+        settlementToken: coinType,
+        merchantAddress: session.merchantAddress,
+        fiatMethod: session.method || "bank_transfer",
+        timestamp: new Date().toISOString()
+      };
+      await walrusService.uploadInvoice(invoiceMetadata);
+    } catch (e: any) {
+      logger.warn("SETTLE", `Walrus post-PTB commit failed: ${e.message}`);
+    }
+  }
+
+  await redisService.updateSessionStatus(nonce, "SETTLED", {
+    txDigest: onChainResult.txDigest,
+    walrusBlobId
+  });
+  logger.success("SETTLE", `Settlement complete for ${nonce}: txDigest=${onChainResult.txDigest}`);
+}
 
 export default router;

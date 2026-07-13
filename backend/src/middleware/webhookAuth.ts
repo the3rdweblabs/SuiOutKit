@@ -7,7 +7,8 @@ import { Request, Response, NextFunction } from "express";
 import { getEnv } from "../config/env.js";
 import logger from "../utils/logger.js";
 
-const FLW_HASH = getEnv("FLW_HASH", "suioutkit_webhook_secret_hash");
+const FLW_MODE = getEnv("FLW_MODE", "test");
+const FLW_HASH = getEnv(`FLW_HASH_${FLW_MODE}`) || getEnv("FLW_HASH");
 
 /**
  * Express middleware that intercepts and validates the Flutterwave Webhook source hash signature.
