@@ -54,8 +54,8 @@ Notes:
 
 | Variable | Description |
 |----------|-------------|
-| `SUI_RPC_ENDPOINT` | JSON-RPC endpoint (used by indexer for `suix_queryEvents` polling) |
-| `SUI_GRPC_ENDPOINT` | gRPC endpoint (used by SuiGrpcClient for Payment Kit flows) |
+| `SUI_GRPC_ENDPOINT` | gRPC endpoint (used by SuiGrpcClient for Payment Kit, settlement, and treasury flows) |
+| `SUI_GRAPHQL_ENDPOINT` | GraphQL RPC endpoint (used by indexer for event polling) |
 | `SUI_NETWORK` | `testnet` or `mainnet` |
 | `PACKAGE_ID` | Published suioutkit Move package |
 | `PAYMENT_KIT_PACKAGE_ID_testnet` / `PAYMENT_KIT_PACKAGE_ID_mainnet` | Payment Kit registry package (required for outPay flow) |

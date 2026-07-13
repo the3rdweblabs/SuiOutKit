@@ -149,8 +149,8 @@ The backend uses the following variables from [`backend/.env`](/backend/.env):
 - `WALRUS_UPLOAD_RELAY_URL`
 - `WALRUS_UPLOAD_RELAY_MAX_TIP`
 - `WALRUS_PUBLISHER_URL`
-- `SUI_RPC_ENDPOINT`
 - `SUI_GRPC_ENDPOINT`
+- `SUI_GRAPHQL_ENDPOINT`
 - `SUI_NETWORK`
 - `PACKAGE_ID`
 - `PAYMENT_KIT_PACKAGE_ID_testnet` / `PAYMENT_KIT_PACKAGE_ID_mainnet` - Payment Kit registry package (outPay flow)
