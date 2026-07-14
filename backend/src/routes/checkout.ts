@@ -163,6 +163,13 @@ router.post("/charge", async (req: Request, res: Response) => {
 
     // STEP 5: Proceed with bank charge or OPay based on method
     if (method === "bank_transfer") {
+      // Idempotency guard: if a virtual account was already allocated for this session,
+      // return it instead of creating a duplicate charge (which Flutterwave rejects on re-used tx_ref).
+      if (session.virtualAccount && session.flwTransactionId) {
+        logger.info("CHECKOUT", `Reusing existing virtual account for session ${session.nonce}: ${session.virtualAccount.bankName} ${session.virtualAccount.accountNumber}`);
+        return res.json({ status: "success", virtualAccount: session.virtualAccount, validatedRate: currentRate });
+      }
+
       // Allocate virtual account via Flutterwave V3
       const va = await flutterwaveService.chargeBankTransfer({
         txRef: session.nonce,
@@ -190,6 +197,12 @@ router.post("/charge", async (req: Request, res: Response) => {
     } else if (method === "opay") {
       if (!phoneNumber) {
         return res.status(400).json({ error: "Phone number is required for OPay payments." });
+      }
+
+      // Idempotency guard: if OPay charge was already initiated, return existing state
+      if (session.status === "PROCESSING" && session.method === "opay") {
+        logger.info("CHECKOUT", `Reusing existing OPay charge for session ${session.nonce}`);
+        return res.json({ status: "success", opayAuthorizationUrl: session.authorizationUrl, validatedRate: currentRate });
       }
 
       const publicUrl = getEnv("PUBLIC_URL", "http://localhost:5000");

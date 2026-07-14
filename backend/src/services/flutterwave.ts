@@ -119,6 +119,8 @@ class FlutterwaveService {
         };
       }
 
+      // Log the full response body on failure for debugging
+      logger.warn("FLUTTERWAVE", `chargeBankTransfer FAILED: httpStatus=${response.status}, body=${this.sanitizeLogValue(JSON.stringify(result))}`);
       throw this.toProviderError("Bank transfer charge", response, result);
     } catch (err: any) {
       this.logError("chargeBankTransfer", err);
@@ -161,10 +163,13 @@ class FlutterwaveService {
 
       const result = await this.readJsonResponse(response);
 
+      logger.info("FLUTTERWAVE", `chargeOPay response: httpStatus=${response.status}, status=${result.status}, message="${this.sanitizeLogValue(result.message || "")}", hasRedirect=${!!result.data?.meta?.authorization?.redirect}`);
+
       if (result.status === "success" && result.data?.meta?.authorization?.redirect) {
         return { authorizationUrl: result.data.meta.authorization.redirect };
       }
 
+      logger.warn("FLUTTERWAVE", `chargeOPay FAILED: httpStatus=${response.status}, body=${this.sanitizeLogValue(JSON.stringify(result))}`);
       throw this.toProviderError("OPay charge", response, result);
     } catch (err: any) {
       this.logError("chargeOPay", err);
