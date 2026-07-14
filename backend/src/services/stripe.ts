@@ -47,6 +47,7 @@ class StripeService {
       const paymentIntent = await this.stripe.paymentIntents.create({
         amount: amountInMinorUnits,
         currency: currency.toLowerCase(),
+        payment_method_types: ['card'],
         metadata: {
           nonce,
           amountMajorUnits: String(amount),

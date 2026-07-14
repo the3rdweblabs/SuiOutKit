@@ -464,7 +464,9 @@ export class SuiOutKitModal {
 
       const appearance = { theme: 'night' as const, variables: { colorPrimary: '#6366f1', colorBackground: 'rgba(15,23,42,0.6)' } };
       this.stripeElements = this.stripeInstance.elements({ appearance, clientSecret });
-      const paymentElement = this.stripeElements.create("payment");
+      const paymentElement = this.stripeElements.create("payment", {
+        wallets: { link: 'never' }
+      });
       paymentElement.mount("#payment-element");
 
       const form = document.getElementById("payment-form");
