@@ -285,20 +285,35 @@ export class SuiOutKitModal {
       </div>
       <div class="suioutkit-panel">
         <form class="sok-form" id="sok-opay-form" style="width: 100%;">
-          <input type="tel" class="sok-input" placeholder="e.g. 08012345678" id="sok-phone-input" required />
-          <button type="submit" class="sok-btn">Send Prompt</button>
+          <input type="tel" class="sok-input" placeholder="e.g. 08012345678" id="sok-phone-input" pattern="\\d{11}" maxlength="11" required />
+          <span class="sok-phone-error" id="sok-phone-error" style="display:none; color:#e74c3c; font-size:12px; margin-top:4px;">Enter a valid 11-digit phone number</span>
+          <button type="submit" class="sok-btn" id="sok-opay-submit" disabled>Continue</button>
         </form>
       </div>
     `;
 
     container.querySelector("#sok-back-btn")?.addEventListener("click", () => this.renderSelectionPanel());
 
+    const phoneInput = container.querySelector("#sok-phone-input") as HTMLInputElement;
+    const submitBtn = container.querySelector("#sok-opay-submit") as HTMLButtonElement;
+    const errorEl = container.querySelector("#sok-phone-error") as HTMLElement;
+
+    const validatePhone = (value: string) => /^\d{11}$/.test(value);
+
+    phoneInput?.addEventListener("input", () => {
+      const valid = validatePhone(phoneInput.value.trim());
+      submitBtn.disabled = !valid;
+      if (errorEl) errorEl.style.display = valid ? "none" : "block";
+    });
+
     container.querySelector("#sok-opay-form")?.addEventListener("submit", (e) => {
       e.preventDefault();
-      const phoneInput = container.querySelector("#sok-phone-input") as HTMLInputElement;
-      if (phoneInput) {
-        this.handleCharge("opay", phoneInput.value.trim());
+      const phone = phoneInput?.value.trim() || "";
+      if (!validatePhone(phone)) {
+        if (errorEl) errorEl.style.display = "block";
+        return;
       }
+      this.handleCharge("opay", phone);
     });
   }
 
