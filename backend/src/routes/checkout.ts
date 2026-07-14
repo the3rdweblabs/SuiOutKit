@@ -186,11 +186,10 @@ router.post("/charge", async (req: Request, res: Response) => {
       });
 
       // Start background polling to verify transaction (backup for webhooks)
-      if (va.transactionId) {
-        startTransactionPolling(session.nonce, va.transactionId, currentRate, sessionCoinType).catch((err: any) => {
-          logger.warn("CHECKOUT", `Transaction polling failed for ${session.nonce}: ${err.message}`);
-        });
-      }
+      logger.info("CHECKOUT", `Bank transfer charge result for ${session.nonce}: transactionId=${va.transactionId ?? "null"}`);
+      startTransactionPolling(session.nonce, currentRate, sessionCoinType, va.transactionId, session.nonce).catch((err: any) => {
+        logger.warn("CHECKOUT", `Transaction polling failed for ${session.nonce}: ${err.message}`);
+      });
 
       logger.info("CHECKOUT", `Allocated dynamic virtual account for session ${session.nonce}: ${va.bankName} ${va.accountNumber} | Rate: ₦${currentRate}`);
       return res.json({ status: "success", virtualAccount: va, validatedRate: currentRate });
@@ -200,7 +199,7 @@ router.post("/charge", async (req: Request, res: Response) => {
       }
 
       // Idempotency guard: if OPay charge was already initiated, return existing state
-      if (session.status === "PROCESSING" && session.method === "opay") {
+      if (session.method === "opay" && session.flwTransactionId) {
         logger.info("CHECKOUT", `Reusing existing OPay charge for session ${session.nonce}`);
         return res.json({ status: "success", opayAuthorizationUrl: session.authorizationUrl, validatedRate: currentRate });
       }
@@ -208,7 +207,7 @@ router.post("/charge", async (req: Request, res: Response) => {
       const publicUrl = getEnv("PUBLIC_URL", "http://localhost:5000");
       const opayRedirectUrl = `${publicUrl}/v1/checkout/opay/callback`;
 
-      const { authorizationUrl } = await flutterwaveService.chargeOPay({
+      const { authorizationUrl, transactionId } = await flutterwaveService.chargeOPay({
         txRef: session.nonce,
         amount: session.amount,
         email: `payer-${session.nonce.substring(0, 8)}@suioutkit.com`,
@@ -216,9 +215,15 @@ router.post("/charge", async (req: Request, res: Response) => {
         redirectUrl: opayRedirectUrl
       });
 
-      await redisService.updateSessionStatus(session.nonce, "PROCESSING", {
+      await redisService.updateSessionStatus(session.nonce, "PENDING", {
         method: "opay",
-        phoneNumber
+        phoneNumber,
+        flwTransactionId: transactionId
+      });
+
+      // Start background polling to verify OPay transaction (backup for webhooks)
+      startTransactionPolling(session.nonce, currentRate, sessionCoinType, transactionId, session.nonce).catch((err: any) => {
+        logger.warn("CHECKOUT", `OPay transaction polling failed for ${session.nonce}: ${err.message}`);
       });
 
       logger.info("CHECKOUT", `Dispatched OPay redirect charge to ${phoneNumber} for session ${session.nonce} | Rate: ₦${currentRate}`);
@@ -797,41 +802,42 @@ router.post("/stripe-webhook", async (req: Request, res: Response) => {
 router.get("/opay/callback", (req: Request, res: Response) => {
   const txRef = req.query.tx_ref as string;
   const status = req.query.status as string;
+  const isSuccess = status === "successful";
 
-  if (status === "successful" && txRef) {
-    res.send(`
-      <!DOCTYPE html>
-      <html><head><title>Payment Authorized</title></head>
-      <body style="font-family:system-ui;text-align:center;padding:60px 20px;">
-        <h1>Payment Authorized</h1>
-        <p>Your OPay payment has been authorized successfully.</p>
-        <p style="color:#666;">Reference: ${txRef}</p>
-        <p>You can close this tab. The settlement is being processed automatically.</p>
-      </body></html>
-    `);
-  } else {
-    res.send(`
-      <!DOCTYPE html>
-      <html><head><title>Payment Status</title></head>
-      <body style="font-family:system-ui;text-align:center;padding:60px 20px;">
-        <h1>Payment ${status || "Unknown"}</h1>
-        <p>Your OPay payment status: ${status || "unknown"}.</p>
-        <p style="color:#666;">Reference: ${txRef || "N/A"}</p>
-      </body></html>
-    `);
-  }
+  // Post status back to parent window (SDK modal) and auto-close
+  res.send(`
+    <!DOCTYPE html>
+    <html><head><title>OPay ${isSuccess ? "Authorized" : "Status"}</title></head>
+    <body style="font-family:system-ui;text-align:center;padding:60px 20px;">
+      <h1>${isSuccess ? "Payment Authorized" : "Payment " + (status || "Unknown")}</h1>
+      <p>${isSuccess ? "Your OPay payment has been authorized successfully." : "Your OPay payment status: " + (status || "unknown") + "."}</p>
+      <p style="color:#666;">Reference: ${txRef || "N/A"}</p>
+      <p style="color:#888; font-size:13px;">This window will close automatically.</p>
+      <script>
+        (function() {
+          try {
+            if (window.opener) {
+              window.opener.postMessage({ type: "suioutkit_opay_complete", txRef: "${txRef || ""}", status: "${status || ""}" }, "*");
+            }
+          } catch(e) {}
+          setTimeout(function() { window.close(); }, 1500);
+        })();
+      </script>
+    </body></html>
+  `);
 });
 
 /**
- * Background polling to verify bank transfer transactions.
+ * Background polling to verify transactions.
  * Backup for webhooks - polls Flutterwave verify endpoint until transaction completes or times out.
+ * Uses transactionId if available, falls back to tx_ref query.
  */
-async function startTransactionPolling(nonce: string, transactionId: number, rate: number, coinType: string) {
+async function startTransactionPolling(nonce: string, rate: number, coinType: string, transactionId?: number | null, txRef?: string) {
   const POLL_INTERVAL = 10_000; // 10 seconds
   const MAX_POLLS = 180; // 30 minutes
   const MAX_WAIT = POLL_INTERVAL * MAX_POLLS;
 
-  logger.info("POLL", `Starting transaction polling for nonce ${nonce}, txId ${transactionId}`);
+  logger.info("POLL", `Starting transaction polling for nonce ${nonce}, txId=${transactionId ?? "null"}, txRef=${txRef ?? "null"}`);
 
   const startTime = Date.now();
 
@@ -846,17 +852,28 @@ async function startTransactionPolling(nonce: string, transactionId: number, rat
     }
 
     try {
-      const tx = await flutterwaveService.verifyTransaction(transactionId);
-      logger.info("POLL", `Transaction ${transactionId} status: ${tx.status}`);
+      let tx: { status: string; id: number; tx_ref: string; amount: number; currency: string } | null = null;
+
+      if (transactionId) {
+        tx = await flutterwaveService.verifyTransaction(transactionId);
+      } else if (txRef) {
+        tx = await flutterwaveService.verifyTransactionByTxRef(txRef);
+      }
+
+      if (!tx) {
+        logger.info("POLL", `No transaction found yet for nonce ${nonce} (txId=${transactionId ?? "null"}, txRef=${txRef ?? "null"}), waiting...`);
+        continue;
+      }
+
+      logger.info("POLL", `Transaction ${tx.id} (${tx.tx_ref}) status: ${tx.status}`);
 
       if (tx.status === "successful") {
-        // Trigger settlement - same logic as webhook handler
         await processSettlement(nonce, tx.amount, rate, coinType);
         return;
       }
 
       if (tx.status === "failed") {
-        logger.warn("POLL", `Transaction ${transactionId} failed for nonce ${nonce}`);
+        logger.warn("POLL", `Transaction ${tx.id} failed for nonce ${nonce}`);
         await redisService.updateSessionStatus(nonce, "EXPIRED", { error: "Payment failed" });
         return;
       }
@@ -873,7 +890,7 @@ async function startTransactionPolling(nonce: string, transactionId: number, rat
  */
 async function processSettlement(nonce: string, paidAmount: number, rate: number, coinType: string) {
   const session = await redisService.getSession(nonce);
-  if (!session || session.status === "SETTLED") return;
+  if (!session || session.status === "SETTLED" || session.status === "PROCESSING") return;
 
   await redisService.updateSessionStatus(nonce, "PROCESSING");
 

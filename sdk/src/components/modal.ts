@@ -183,7 +183,7 @@ export class SuiOutKitModal {
           this.renderBankTransferPanel(result.virtualAccount);
         } else if (method === "opay") {
           if (result.opayAuthorizationUrl) {
-            window.location.href = result.opayAuthorizationUrl;
+            this.openOPayFlow(result.opayAuthorizationUrl);
           } else {
             this.renderErrorPanel("OPay authorization URL not received.");
           }
@@ -193,6 +193,70 @@ export class SuiOutKitModal {
       }
     } catch (err) {
       this.renderErrorPanel("Connection to payment server failed.");
+    }
+  }
+
+  private openOPayFlow(authorizationUrl: string) {
+    // Try popup first, fall back to new tab if blocked
+    let opayWindow: Window | null = null;
+    try {
+      opayWindow = window.open(authorizationUrl, "suioutkit_opay", "width=500,height=700,popup=yes");
+    } catch {}
+
+    if (!opayWindow) {
+      // Popup blocked — open in new tab
+      opayWindow = window.open(authorizationUrl, "_blank");
+    }
+
+    this.renderOPayWaitingPanel(opayWindow);
+  }
+
+  private renderOPayWaitingPanel(opayWindow: Window | null) {
+    const container = this.overlay?.querySelector("#sok-content-panel");
+    if (!container) return;
+
+    container.innerHTML = `
+      <button class="suioutkit-back" id="sok-back-btn">← Back to methods</button>
+      <div class="suioutkit-panel">
+        <div class="sok-spinner"></div>
+        <p class="sok-status-text">Waiting for OPay approval...</p>
+        <p style="font-size:12px; color:#888; margin-top:8px;">Complete payment in the OPay window</p>
+      </div>
+    `;
+
+    container.querySelector("#sok-back-btn")?.addEventListener("click", () => {
+      try { opayWindow?.close(); } catch {}
+      this.stopPolling();
+      this.removeOPayMessageListener();
+      this.renderSelectionPanel();
+    });
+
+    // Listen for postMessage from popup/tab when payment completes
+    this.setupOPayMessageListener();
+
+    // Poll backend for session status as backup
+    this.startPolling();
+  }
+
+  private opayMessageHandler: ((event: MessageEvent) => void) | null = null;
+
+  private setupOPayMessageListener() {
+    this.removeOPayMessageListener();
+    this.opayMessageHandler = (event: MessageEvent) => {
+      const data = event.data;
+      if (data && data.type === "suioutkit_opay_complete") {
+        this.removeOPayMessageListener();
+        this.stopPolling();
+        // Polling will pick up the SETTLED status and render success
+      }
+    };
+    window.addEventListener("message", this.opayMessageHandler);
+  }
+
+  private removeOPayMessageListener() {
+    if (this.opayMessageHandler) {
+      window.removeEventListener("message", this.opayMessageHandler);
+      this.opayMessageHandler = null;
     }
   }
 
@@ -1046,6 +1110,7 @@ export class SuiOutKitModal {
 
   public destroy() {
     this.stopPolling();
+    this.removeOPayMessageListener();
     this.clearWalletConnectionWaiter();
     if (this.dAppKit) {
       this.dAppKit.disconnectWallet().catch(() => { });

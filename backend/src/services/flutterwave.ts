@@ -94,6 +94,8 @@ class FlutterwaveService {
 
       const result = await this.readJsonResponse(response);
 
+      logger.info("FLUTTERWAVE", `chargeBankTransfer response: httpStatus=${response.status}, status=${result.status}, message="${this.sanitizeLogValue(result.message || "")}", hasAuthorization=${!!result.meta?.authorization}, dataId=${result.data?.id ?? "null"}`);
+
       if (result.status === "success" && result.meta?.authorization) {
         const auth = result.meta.authorization;
 
@@ -137,7 +139,7 @@ class FlutterwaveService {
    * Initiates an OPay charge via Flutterwave redirect flow.
    * Returns the authorization redirect URL the user must visit to approve the payment.
    */
-  public async chargeOPay(params: CreateChargeParams): Promise<{ authorizationUrl: string }> {
+  public async chargeOPay(params: CreateChargeParams): Promise<{ authorizationUrl: string; transactionId: number | null }> {
     this.assertValidConfig();
 
     try {
@@ -166,7 +168,10 @@ class FlutterwaveService {
       logger.info("FLUTTERWAVE", `chargeOPay response: httpStatus=${response.status}, status=${result.status}, message="${this.sanitizeLogValue(result.message || "")}", hasRedirect=${!!result.data?.meta?.authorization?.redirect}`);
 
       if (result.status === "success" && result.data?.meta?.authorization?.redirect) {
-        return { authorizationUrl: result.data.meta.authorization.redirect };
+        return {
+          authorizationUrl: result.data.meta.authorization.redirect,
+          transactionId: result.data?.id || null
+        };
       }
 
       logger.warn("FLUTTERWAVE", `chargeOPay FAILED: httpStatus=${response.status}, body=${this.sanitizeLogValue(JSON.stringify(result))}`);
@@ -223,6 +228,53 @@ class FlutterwaveService {
         ? err
         : new FlutterwaveServiceError(
           `Flutterwave Verify Error: ${err.message || "Unable to verify transaction."}`,
+          "FLW_PROVIDER_ERROR"
+        );
+    }
+  }
+
+  /**
+   * Queries transactions by tx_ref with Flutterwave.
+   * Returns the most recent matching transaction, or null if none found.
+   */
+  public async verifyTransactionByTxRef(txRef: string): Promise<{
+    status: string;
+    id: number;
+    tx_ref: string;
+    amount: number;
+    currency: string;
+  } | null> {
+    this.assertValidConfig();
+
+    try {
+      const response = await fetch(`${FLW_API_BASE}/transactions?tx_ref=${encodeURIComponent(txRef)}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${FLW_SECRET_KEY}`,
+          Accept: "application/json"
+        }
+      });
+
+      const result = await this.readJsonResponse(response);
+
+      if (result.status === "success" && Array.isArray(result.data) && result.data.length > 0) {
+        const tx = result.data[0];
+        return {
+          status: tx.status,
+          id: tx.id,
+          tx_ref: tx.tx_ref,
+          amount: tx.amount,
+          currency: tx.currency
+        };
+      }
+
+      return null;
+    } catch (err: any) {
+      this.logError("verifyTransactionByTxRef", err);
+      throw err instanceof FlutterwaveServiceError
+        ? err
+        : new FlutterwaveServiceError(
+          `Flutterwave Verify by tx_ref Error: ${err.message || "Unable to verify transaction."}`,
           "FLW_PROVIDER_ERROR"
         );
     }
