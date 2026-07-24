@@ -18,6 +18,7 @@ Use these guides to integrate the SDK, run a local development stack, or operate
 |-----|-------------|
 | [Architecture](./guides/architecture.md) | How the SDK fits the hosted platform |
 | [SDK Reference](./guides/sdk.md) | `SuiOutKit` API summary (see also [SDK README](/sdk/README.md)) |
+| [Currencies](./guides/currencies.md) | Supported fiat currencies, formatting, geo detection, CoinGecko FX |
 | [Backend API](./guides/backend-api.md) | Routes the SDK calls internally |
 | [Environment](./guides/environment.md) | Operator env vars (not required for merchants) |
 | [Security](./guides/security.md) | Production practices |

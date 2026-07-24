@@ -29,14 +29,14 @@ const sdk = new SuiOutKit({
 
 ```ts
 const session = await sdk.initCheckout({
-  amount: 45000,
-  currency: "NGN",
+  amount: 29.99,
+  currency: "USD",
   coinType?: "0x2::sui::SUI",   // optional: override settlement coin
   metadata?: { orderId: "ORDER-123" },
 });
 ```
 
-Returns `CheckoutSession` with `token`, `nonce`, `coinType`, `supportedCoins`, `estimatedRate`, etc.
+Returns `CheckoutSession` with `token`, `nonce`, `coinType`, `supportedCoins`, `estimatedRate`, `resolvedCurrency`, `currencySymbol`, etc.
 
 ### `openModal(session, options?)`
 
@@ -66,8 +66,8 @@ Binds checkout to a DOM button by CSS selector.
 
 ```ts
 sdk.wrapButton("#pay-btn", {
-  amount: 45000,
-  currency: "NGN",
+  amount: 29.99,
+  currency: "USD",
   coinType: "0x2::sui::SUI",   // optional
 });
 ```
@@ -81,7 +81,7 @@ Submit a wallet/outPay transaction digest after a custom crypto flow. Methods: `
 ```ts
 import {
   request,
-  formatNgn,
+  formatCurrency,
   toTokenUnits,
   formatToken,
   createPolling,
@@ -91,7 +91,7 @@ import {
 | Export | Purpose |
 |--------|---------|
 | `request` | Fetch with timeout + JSON |
-| `formatNgn` | Format NGN amounts |
+| `formatCurrency(amount, currency)` | Format any fiat amount with correct symbol (e.g. `formatCurrency(29.99, "USD")` → `$29.99`) |
 | `toTokenUnits` | Base units → float |
 | `formatToken` | Display token amounts |
 | `createPolling` | `{ start(), stop() }` interval helper |

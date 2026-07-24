@@ -53,8 +53,8 @@ const sdk = new SuiOutKit({
 export function PayButton() {
   async function handlePay() {
     const session = await sdk.initCheckout({
-      amount: 45000,
-      currency: "NGN",
+      amount: 29.99,
+      currency: "USD",
       metadata: { orderId: "ORDER-123" },
     });
     sdk.openModal(session, () => {
@@ -69,13 +69,13 @@ export function PayButton() {
 ### One-line button binding
 ```ts
 sdk.wrapButton("#pay-btn", {
-  amount: 45000,
-  currency: "NGN",
+  amount: 29.99,
+  currency: "USD",
   metadata: { sku: "PRO-PLAN" },
 });
 ```
 
-Updates the button label (e.g. `Pay ₦45,000`) and opens the modal on click.
+Updates the button label (e.g. `Pay €29.99`) and opens the modal on click.
 
 ### Vanilla HTML (serve SDK bundle)
 For simple demos you can serve the built SDK bundle from any static host. Build the SDK with `npm run build` in `sdk/` and serve `sdk/dist/index.js` from your server. See the Developer Guide for recommended local and production setups: [/docs/developer-guide.md](/docs/developer-guide.md).
@@ -97,8 +97,8 @@ Creates a checkout session on the backend.
 
 ```ts
 const session = await sdk.initCheckout({
-  amount: 45000,       // integer in major units (e.g. 45000 NGN)
-  currency: "NGN",     // e.g. "NGN"
+  amount: 29.99,       // integer or decimal in major units
+  currency: "USD",     // any supported fiat currency code
   coinType?: "0x2::sui::SUI",  // optional: override settlement coin
   metadata?: { orderId: "ORDER-123" },
 });
@@ -111,10 +111,13 @@ const session = await sdk.initCheckout({
 | `token` | Opaque session token for charge/crypto calls |
 | `nonce` | Public session id for status polling |
 | `amount`, `currency` | Checkout totals |
+| `resolvedCurrency` | Final currency code (from geo detection or explicit) |
+| `currencySymbol` | Currency symbol (e.g. `€`, `R`, `₦`) |
 | `merchantAddress` | Normalized Sui address |
 | `coinType` | Settlement coin type (from backend config) |
 | `supportedCoins` | Array of `{ symbol, type, decimals }` for available settlement coins |
-| `estimatedRate` | FX preview (NGN → token) when applicable |
+| `estimatedRate` | FX preview (fiat → token) when applicable |
+| `supportedFiatCurrencies` | Array of supported fiat currency codes |
 | `packageId`, `cryptoRegistryId`, `cryptoRegistryName` | On-chain config for crypto paths |
 
 Throws if the backend returns a non-OK response.
@@ -155,7 +158,7 @@ Binds checkout to a DOM button.
 |----------|------|-------------|
 | `selector` | `string` | CSS selector (e.g. `"#pay-btn"`) |
 | `options.amount` | `number` | Checkout amount |
-| `options.currency` | `string` | e.g. `"NGN"` |
+| `options.currency` | `string` | Any supported fiat currency code (e.g. `"USD"`, `"ZAR"`, `"NGN"`) |
 | `options.coinType` | `string` | Optional settlement coin type override |
 | `options.metadata` | `object` | Optional passthrough to `initCheckout` |
 
@@ -187,7 +190,7 @@ For custom UIs without the modal:
 import {
   SuiOutKit,
   request,
-  formatNgn,
+  formatCurrency,
   toTokenUnits,
   formatToken,
   createPolling,
@@ -197,10 +200,12 @@ import {
 | Export | Description |
 |--------|-------------|
 | `request(url, options?)` | `fetch` wrapper with timeout and JSON parsing |
-| `formatNgn(amount)` | Format NGN with locale / `₦` fallback |
+| `formatCurrency(amount, currency)` | Format any fiat amount with correct symbol and locale (e.g. `formatCurrency(29.99, "USD")` → `$29.99`) |
 | `toTokenUnits(baseUnits, decimals?)` | Convert base units to float (default 9 decimals) |
 | `formatToken(amount, decimals?, digits?)` | Display-friendly token amount string |
 | `createPolling(fn, intervalMs)` | `{ start(), stop() }` interval helper |
+
+> **Note:** `formatNgn` is deprecated - use `formatCurrency(amount, "NGN")` instead.
 
 **Example - poll settlement status:**
 
@@ -229,7 +234,7 @@ The modal orchestrates these **charge** methods against the backend:
 |--------|----------|--------|
 | `bank_transfer` | Flutterwave | Virtual account details shown in modal |
 | `opay` | Flutterwave | Requires `phoneNumber` at charge time |
-| `stripe` | Stripe | Card element; NGN minimum enforced server-side |
+| `stripe` | Stripe | Card element; currency-specific minimum enforced server-side (~$0.50 USD equivalent) |
 | `sui_wallet` | Sui + Payment Kit | Wallet connect via dApp Kit |
 | `outpay` | Payment Kit QR | outPay flow |
 
@@ -268,7 +273,7 @@ Webhooks (`/v1/checkout/webhook`, `/v1/checkout/stripe-webhook`) are server-to-p
 | `Failed to initialize checkout session` | Backend down, CORS, or missing `merchantAddress` |
 | `409 Treasury insufficient` | Operator vault underfunded for FX settlement amount |
 | Modal stuck on “waiting for settlement” | Webhook not reaching backend (Flutterwave hash, Stripe CLI, or ngrok) |
-| Stripe card errors on small NGN amounts | Backend enforces ~$0.50 USD equivalent minimum |
+| Stripe card errors on small amounts | Backend enforces ~$0.50 USD equivalent minimum per currency |
 | Crypto connect fails | Wrong `mode` or registry env on backend |
 | Styles missing | Backend not serving `/style.css` or wrong `backendUrl` |
 

@@ -17,15 +17,15 @@ Create a checkout session.
 
 ```json
 {
-  "amount": 45000,
-  "currency": "NGN",
+  "amount": 29.99,
+  "currency": "USD",
   "merchantAddress": "0x...",
   "coinType": "0x2::sui::SUI",
   "metadata": {}
 }
 ```
 
-Returns session with `token`, `nonce`, `estimatedRate`, `coinType`, `supportedCoins`, `status`.
+Returns session with `token`, `nonce`, `estimatedRate`, `coinType`, `supportedCoins`, `resolvedCurrency`, `currencySymbol`, `status`.
 
 ## Charge
 

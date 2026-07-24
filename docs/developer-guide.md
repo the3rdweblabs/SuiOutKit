@@ -29,8 +29,8 @@ The merchant site initializes a checkout session through the SDK.
 
 ```ts
 const session = await sdk.initCheckout({
-  amount: 45000,
-  currency: "NGN",
+  amount: 29.99,
+  currency: "USD",
   coinType: "0x2::sui::SUI", // optional: override settlement coin
   metadata: { orderId: "ORDER-123" }
 });
@@ -88,7 +88,7 @@ Methods:
 The package also exposes small helpers for custom integrations:
 
 - `request(url, opts)` - fetch helper with timeout and JSON parsing
-- `formatNgn(amount)` - NGN formatting helper
+- `formatCurrency(amount, currency)` - format any fiat amount with correct symbol (e.g. `formatCurrency(29.99, "USD")` → `$29.99`)
 - `toTokenUnits(baseUnits, decimals)` - convert from base units to token value
 - `formatToken(amount, decimals, digits)` - format token amounts for display
 - `createPolling(fn, intervalMs)` - lightweight polling helper
@@ -103,8 +103,8 @@ Request body:
 
 ```json
 {
-  "amount": 45000,
-  "currency": "NGN",
+  "amount": 29.99,
+  "currency": "USD",
   "merchantAddress": "0x...",
   "coinType": "0x2::sui::SUI",
   "metadata": {}
@@ -173,6 +173,13 @@ The backend uses the following variables from [`backend/.env`](/backend/.env):
 - `CRYPTO_REGISTRY_ADMIN_CAP_ID`
 - `SUI_OPERATOR_PRIVATE_KEY`
 - `WALRUS_OPERATOR_PRIVATE_KEY`
+- `DEFAULT_CURRENCY` - default fiat currency when none specified (default `USD`)
+- `SUPPORTED_FIAT_CURRENCIES` - comma-separated list of allowed fiat codes (empty = all 40+)
+- `ENABLE_GEO_DETECTION` - IP-based currency auto-detection (default `false`)
+- `COINGECKO_API_MODE` - `demo`, `pro`, or empty (free tier)
+- `COINGECKO_API_KEY_DEMO` - CoinGecko Demo API key (higher rate limits)
+- `COINGECKO_API_KEY_PRO` - CoinGecko Pro API key (paid tier)
+- `FX_CACHE_TTL` - FX price cache TTL in ms (default `30000`)
 
 ## Treasury and FX Policy
 A payment confirmation is only allowed if the backend can validate two things:
@@ -227,8 +234,8 @@ sui move test
 ### Treasury aborts with code 4
 The treasury does not hold enough of the requested coin type. Verify the operator deposit and the settlement amount derived from the current FX rate.
 
-### FX falls back to 1300
-The FX service failed to fetch the current rate from its upstream APIs. Check the network, upstream availability, and backend logs.
+### FX falls back to defaults
+The FX service failed to fetch the current rate from CoinGecko. Check network availability, API key configuration (`COINGECKO_API_MODE`), and backend logs. The service falls back to cached rates, then to hardcoded defaults.
 
 ### Walrus upload fails
 Try enabling the upload relay or switching to publisher mode in the backend environment.

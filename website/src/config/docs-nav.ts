@@ -18,6 +18,7 @@ export const docsNav: NavItem[] = [
     children: [
       { title: "Architecture", href: "/docs/guides/architecture" },
       { title: "SDK Reference", href: "/docs/guides/sdk" },
+      { title: "Currencies", href: "/docs/guides/currencies" },
       { title: "Backend API", href: "/docs/guides/backend-api" },
       { title: "Environment (operators)", href: "/docs/guides/environment" },
       { title: "Security", href: "/docs/guides/security" },

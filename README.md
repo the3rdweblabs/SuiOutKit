@@ -11,7 +11,7 @@ Universal payment gateway for merchants: accept **fiat** (bank transfer, OPay, c
 
 ## Features
 
-- **Fiat checkout** - Flutterwave (NGN bank transfer, OPay) and Stripe (cards)
+- **Fiat checkout** - Flutterwave (bank transfer, OPay) and Stripe (cards) - 40+ fiat currencies with locale-aware formatting
 - **Crypto checkout** - Sui wallet and outPay via Mysten Payment Kit
 - **On-chain settlement** - Operator treasury releases tokens; Payment Kit enforces nonce uniqueness
 - **Receipts** - `SuiOutKitReceipt` on Sui + structured invoice blobs on Walrus
@@ -31,7 +31,7 @@ Quick links to common helpers and implementation entry points used by integrator
        - [sdk/src/index.ts](sdk/src/index.ts) - package entry and `SuiOutKit` class
        - [sdk/src/config/api.ts](sdk/src/config/api.ts) - API origin and path helpers
        - [sdk/src/utils/http.ts](sdk/src/utils/http.ts) - `request` helper (timeout, retries)
-       - [sdk/src/utils/format.ts](sdk/src/utils/format.ts) - `formatNgn`, `formatToken`, `toTokenUnits`
+       - [sdk/src/utils/format.ts](sdk/src/utils/format.ts) - `formatCurrency`, `formatToken`, `toTokenUnits`
        - [sdk/src/hooks/usePaymentStatus.ts](sdk/src/hooks/usePaymentStatus.ts) - SSE/react helper
 - Backend
        - [backend/src/index.ts](backend/src/index.ts) - HTTP entry (Express app)
@@ -61,7 +61,8 @@ npm install suioutkit
 import { SuiOutKit } from "suioutkit";
 
 const sdk = new SuiOutKit({ merchantAddress: "0xYOUR_MERCHANT_SUI_ADDRESS" });
-const session = await sdk.initCheckout({ amount: 45000, currency: "NGN", coinType: "0x2::sui::SUI" });
+const session = await sdk.initCheckout({ amount: 29.99, currency: "USD", coinType: "0x2::sui::SUI" });
+// or any supported currency: { amount: 1500, currency: "NGN" }
 sdk.openModal(session);
 ```
 
@@ -81,7 +82,7 @@ SDK override: `mode: "local"` (localhost:5000, testnet) or `mode: "test"` (stagi
 
 ### Demo
 
-With the stack running, open [`demo/demo.html`](demo/demo.html). Health: `http://localhost:5000/health`
+With the stack running, open [`demo/demo.html`](demo/demo.html) (NGN) or [`demo/demo(multi-currency(local)).html`](demo/demo(multi-currency(local)).html) (40+ currencies). Health: `http://localhost:5000/health`
 
 An extended flow is in [`demo/demo-e2e.html`](demo/demo-e2e.html).
 
@@ -117,6 +118,7 @@ suioutkit/
 |-------|----------|
 | HTTP entry | [`backend/src/index.ts`](backend/src/index.ts) |
 | Checkout routes | [`backend/src/routes/checkout.ts`](backend/src/routes/checkout.ts) |
+| Fiat currencies | [`backend/src/config/currencies.ts`](backend/src/config/currencies.ts) |
 | Sui settlement | [`backend/src/services/sui.ts`](backend/src/services/sui.ts) |
 | Move settlement | [`contracts/suioutkit/sources/checkout.move`](contracts/suioutkit/sources/checkout.move) |
 | SDK entry | [`sdk/src/index.ts`](sdk/src/index.ts) |

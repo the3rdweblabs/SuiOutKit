@@ -21,8 +21,8 @@ const sdk = new SuiOutKit({
 export function PayButton() {
   async function handlePay() {
     const session = await sdk.initCheckout({
-      amount: 45000,
-      currency: "NGN",
+      amount: 29.99,
+      currency: "USD",
       coinType: "0x2::sui::SUI",  // optional
       metadata: { orderId: "ORDER-123" },
     });
@@ -49,15 +49,15 @@ Ensure `merchantAddress` is your merchant Sui address (required).
 
 ```ts
 sdk.wrapButton("#pay-btn", {
-  amount: 45000,
-  currency: "NGN",
+  amount: 29.99,
+  currency: "USD",
   coinType: "0x2::sui::SUI",  // optional
 });
 ```
 
 ## What happens
 
-1. You call `initCheckout` - the SDK creates a session.
+1. You call `initCheckout` - the SDK creates a session (40+ fiat currencies supported).
 2. The customer pays in the modal (bank, OPay, card, wallet, or outPay QR).
 3. SuiOutKit completes settlement on Sui; the modal polls until done.
 

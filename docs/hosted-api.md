@@ -82,12 +82,14 @@ const sdk = new SuiOutKit({
 });
 
 const session = await sdk.initCheckout({
-  amount: 45000,
-  currency: "NGN",
+  amount: 29.99,
+  currency: "USD",
 });
 
 sdk.openModal(session);
 ```
+
+40+ fiat currencies supported - see [Currencies](/docs/guides/currencies) for the full list.
 
 Merchants do **not** need to clone this repo, run Docker, or manage `backend/.env`.
 

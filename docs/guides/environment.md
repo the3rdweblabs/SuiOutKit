@@ -84,6 +84,13 @@ Notes:
 | `DEFAULT_COIN` | Symbol of the default settlement coin (default `SUI`) |
 | `SETTLEMENT_TOKEN_TYPE` | Legacy - fallback when `SUPPORTED_COINS` is not set. Use `SUPPORTED_COINS` instead. |
 | `SUI_OPERATOR_PRIVATE_KEY` | Signs settlement PTBs |
+| `DEFAULT_CURRENCY` | Default fiat currency when none specified and geo detection is off (default `USD`) |
+| `SUPPORTED_FIAT_CURRENCIES` | Comma-separated fiat codes to accept (empty = all 40+). Example: `NGN,USD,GBP,EUR` |
+| `ENABLE_GEO_DETECTION` | Auto-detect user currency from IP (default `false`) |
+| `COINGECKO_API_MODE` | FX rate source: `demo` (higher limits, same endpoint), `pro` (paid, highest limits), or empty (free tier) |
+| `COINGECKO_API_KEY_DEMO` | CoinGecko Demo API key for `COINGECKO_API_MODE=demo` |
+| `COINGECKO_API_KEY_PRO` | CoinGecko Pro API key for `COINGECKO_API_MODE=pro` |
+| `FX_CACHE_TTL` | FX price cache duration in ms (default `30000`) |
 
 Notes:
 
@@ -112,7 +119,7 @@ Notes:
 | Issue | Check |
 |-------|--------|
 | Treasury abort code 4 | Fund treasury for the settlement coin type (see `SUPPORTED_COINS`) |
-| FX falls back to ~1300 | FX upstream unreachable |
+| FX falls back to defaults | CoinGecko unreachable; check `COINGECKO_API_MODE` and API keys |
 | Walrus upload fails | Try upload relay or publisher mode |
 
 If you are operating the backend in production, follow the Developer Guide ([`/docs/developer-guide`](/docs/developer-guide.md)) for deployment checklists (keys, secure env, and Sui object IDs). Always rotate and protect private keys.
