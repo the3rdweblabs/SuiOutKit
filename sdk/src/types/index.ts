@@ -18,8 +18,7 @@ export interface SupportedCoin {
 
 export interface CheckoutSessionOptions {
   amount: number;
-  currency: "NGN" | "SUI" | string;
-  merchantAddress: string;
+  currency?: string;
   coinType?: string;
   metadata?: Record<string, any>;
 }
@@ -29,6 +28,8 @@ export interface CheckoutSession {
   nonce: string;
   amount: number;
   currency: string;
+  resolvedCurrency: string;
+  currencySymbol: string;
   merchantAddress: string;
   walrusBlobId?: string;
   packageId?: string;
@@ -37,6 +38,7 @@ export interface CheckoutSession {
   coinType?: string;
   estimatedRate?: number;
   supportedCoins?: SupportedCoin[];
+  supportedFiatCurrencies?: string[];
 }
 
 export type ChargeMethod = "bank_transfer" | "opay" | "crypto" | "sui_wallet" | "outpay" | "stripe";

@@ -16,6 +16,7 @@ import { loadStripe, StripeElements, Stripe } from "@stripe/stripe-js";
 import { CheckoutSession, ChargeResponse, CheckoutStatusResponse, CryptoIntentResponse, SuiOutKitModalOptions, PaymentResult } from "../types/index.js";
 import PaymentStatusUI from "./PaymentStatusUI";
 import { joinApiPath } from "../config/api.js";
+import { formatCurrency } from "../utils/format.js";
 
 const SUI_GRPC_URLS = {
   mainnet: "https://fullnode.mainnet.sui.io:443",
@@ -115,8 +116,7 @@ export class SuiOutKitModal {
     const container = this.overlay?.querySelector("#sok-content-panel");
     if (!container) return;
 
-    const currencySymbol = this.session.currency === "NGN" ? "₦" : "";
-    const formattedAmount = `${currencySymbol}${this.session.amount.toLocaleString()}`;
+    const formattedAmount = formatCurrency(this.session.amount, this.session.resolvedCurrency || this.session.currency || "USD");
 
     container.innerHTML = `
       <div class="suioutkit-header">
@@ -281,7 +281,7 @@ export class SuiOutKitModal {
       <div class="suioutkit-panel">
         <div class="suioutkit-amount-box">
           <p class="suioutkit-subtitle">Please transfer exactly</p>
-          <h2 class="sok-fiat-amt">₦${va.amount.toLocaleString()}</h2>
+          <h2 class="sok-fiat-amt">${formatCurrency(va.amount, this.session.resolvedCurrency || this.session.currency || "USD")}</h2>
         </div>
 
         <div class="sok-va-card">
@@ -777,8 +777,7 @@ export class SuiOutKitModal {
     const container = this.overlay?.querySelector("#sok-content-panel");
     if (!container) return;
 
-    const currencySymbol = this.session.currency === "NGN" ? "₦" : "";
-    const formattedAmount = `${currencySymbol}${this.session.amount.toLocaleString()}`;
+    const formattedAmount = formatCurrency(this.session.amount, this.session.resolvedCurrency || this.session.currency || "USD");
     const shortAddress = `${account.address.substring(0, 6)}...${account.address.slice(-4)}`;
     const network = ((window as any).SuiOutKitNetwork as string) || "testnet";
 
@@ -1034,7 +1033,7 @@ export class SuiOutKitModal {
           <div class="sok-receipt-row">
             <span class="sok-receipt-lbl">Amount Paid</span>
             <span class="sok-receipt-val sok-text-green" style="font-weight:700;">
-              ${this.session.currency === "NGN" ? "₦" : ""}${this.session.amount.toLocaleString()}
+              ${formatCurrency(this.session.amount, this.session.resolvedCurrency || this.session.currency || "USD")}
             </span>
           </div>
 

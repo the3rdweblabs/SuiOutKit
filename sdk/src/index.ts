@@ -6,6 +6,7 @@ import { CheckoutSession, CheckoutSessionOptions, CryptoConfirmResponse, SuiOutK
 import { SuiOutKitModal } from "./components/modal.js";
 import { joinApiPath, DEFAULT_API_ORIGIN } from "./config/api.js";
 import { MODE_MAP } from "./config/modes.js";
+import { formatCurrency } from "./utils/format.js";
 
 export { DEFAULT_API_ORIGIN, API_V1_PREFIX } from "./config/api.js";
 
@@ -90,7 +91,7 @@ export class SuiOutKit {
    */
   public wrapButton(
     selector: string,
-    options: { amount: number; currency: "NGN" | "SUI" | string; coinType?: string; metadata?: Record<string, any> }
+    options: { amount: number; currency?: string; coinType?: string; metadata?: Record<string, any> }
   ): void {
     const btn = document.querySelector(selector) as HTMLButtonElement;
     if (!btn) {
@@ -98,9 +99,8 @@ export class SuiOutKit {
       return;
     }
 
-    // Format display currency symbol
-    const currencySymbol = options.currency === "NGN" ? "₦" : "";
-    const formattedAmount = `${currencySymbol}${options.amount.toLocaleString()}`;
+    const displayCurrency = options.currency || "USD";
+    const formattedAmount = formatCurrency(options.amount, displayCurrency);
     const originalText = btn.textContent || "Pay Now";
 
     // Set premium branded text

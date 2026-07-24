@@ -2,14 +2,28 @@
 // Copyright (c) 2026 The3rdWebLabs (https://github.com/the3rdweblabs)
 // Author: @CYBWithFlourish (https://github.com/CYBWithFlourish)
 
-/** Format a Naira amount with currency symbol and grouping. */
-export function formatNgn(amount: number): string {
-  try {
-    return new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", maximumFractionDigits: 0 }).format(amount);
-  } catch (_) {
-    // Fallback
-    return `₦${Math.round(amount).toLocaleString()}`;
+import { getCurrencyConfig } from "../config/currencies.js";
+
+/** Format a fiat amount with proper currency symbol and locale formatting. */
+export function formatCurrency(amount: number, currency: string): string {
+  const cfg = getCurrencyConfig(currency);
+  if (!cfg) {
+    return `${currency} ${amount.toLocaleString()}`;
   }
+  try {
+    const formatted = new Intl.NumberFormat(cfg.locale, {
+      minimumFractionDigits: cfg.decimals,
+      maximumFractionDigits: cfg.decimals,
+    }).format(amount);
+    return `${cfg.symbol}${formatted}`;
+  } catch (_) {
+    return `${cfg.symbol}${Math.round(amount).toLocaleString()}`;
+  }
+}
+
+/** Format a Naira amount (deprecated — use formatCurrency instead). */
+export function formatNgn(amount: number): string {
+  return formatCurrency(amount, "NGN");
 }
 
 /** Convert base integer units into token float given decimals. */
@@ -24,4 +38,4 @@ export function formatToken(amount: number, decimals = 9, digits = 6): string {
   return value.toFixed(digits).replace(/(?:\.0+|(?<=\.[0-9]*?)0+)$/, "");
 }
 
-export default { formatNgn, toTokenUnits, formatToken };
+export default { formatCurrency, formatNgn, toTokenUnits, formatToken };
