@@ -12,6 +12,7 @@ import stripeService from "../services/stripe.js";
 import walrusService from "../services/walrus.js";
 import suiService from "../services/sui.js";
 import fxService from "../services/fx.js";
+import geoService from "../services/geo.js";
 import { getEnv } from "../config/env.js";
 import logger from "../utils/logger.js";
 import { rateLimiter } from "../middleware/rateLimiter.js";
@@ -19,10 +20,10 @@ import { validateWebhookAuth } from "../middleware/webhookAuth.js";
 import { CheckoutSession } from "../types/checkout.js";
 import { assertTreasurySufficient } from "../utils/treasuryCheck.js";
 import { getDefaultCoin, getCoinConfig, getSupportedCoinList, toBaseUnits, fromBaseUnits, getDecimals } from "../config/coins.js";
+import { getFiatCurrency, isFiatCurrency, getDefaultCurrency, getDefaultRate, getFiatCurrencyList } from "../config/currencies.js";
 
 const router = Router();
 
-// Load FX and Webhook configurations
 const SUI_NETWORK = getEnv("SUI_NETWORK", "testnet") as any;
 const PACKAGE_ID = getEnv(`PACKAGE_ID_${SUI_NETWORK}`);
 const CRYPTO_REGISTRY_ID = getEnv(`CRYPTO_REGISTRY_ID_${SUI_NETWORK}`);
@@ -32,8 +33,15 @@ function normalizeMerchantAddress(address: string) {
   if (!isValidSuiAddress(address)) {
     throw new Error(`Invalid merchant Sui address: ${address}`);
   }
-
   return normalizeSuiAddress(address);
+}
+
+function getClientIp(req: Request): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) {
+    return (Array.isArray(forwarded) ? forwarded[0] : forwarded.split(",")[0]).trim();
+  }
+  return req.socket.remoteAddress || "";
 }
 
 /**
@@ -43,15 +51,31 @@ function normalizeMerchantAddress(address: string) {
 router.post("/session", rateLimiter, async (req: Request, res: Response) => {
   const { amount, currency, merchantAddress, coinType, metadata } = req.body;
 
-  if (!amount || !currency || !merchantAddress) {
-    return res.status(400).json({ error: "Missing required session parameters." });
+  if (!amount || !merchantAddress) {
+    return res.status(400).json({ error: "Missing required session parameters (amount, merchantAddress)." });
   }
 
   try {
     const nonce = crypto.randomUUID();
     const token = crypto.randomBytes(32).toString("hex");
 
-    // Resolve coinType - validate against supported list
+    let resolvedCurrency: string;
+    if (currency && currency !== "auto" && currency.trim()) {
+      resolvedCurrency = currency.trim().toUpperCase();
+      if (!isFiatCurrency(resolvedCurrency)) {
+        const supported = getFiatCurrencyList().map((c) => c.code).join(", ");
+        return res.status(400).json({
+          error: `Unsupported currency: ${resolvedCurrency}. Supported: ${supported}`,
+        });
+      }
+    } else {
+      const detected = await geoService.detectCurrency(getClientIp(req));
+      resolvedCurrency = detected || getDefaultCurrency();
+    }
+
+    const currencyCfg = getFiatCurrency(resolvedCurrency);
+    const currencySymbol = currencyCfg?.symbol || resolvedCurrency;
+
     const defaultCoin = getDefaultCoin();
     const requestedCoin = coinType || defaultCoin.type;
     const coinCfg = getCoinConfig(requestedCoin);
@@ -64,19 +88,20 @@ router.post("/session", rateLimiter, async (req: Request, res: Response) => {
     const targetCoinType = coinCfg.type;
     const normalizedMerchantAddress = normalizeMerchantAddress(merchantAddress);
 
-    // Calculate real-time dynamic exchange rate for checkout preview
-    let estimatedRate = 1300;
+    let estimatedRate = getDefaultRate(resolvedCurrency);
     try {
-      estimatedRate = await fxService.getRateNGNToToken(targetCoinType);
+      estimatedRate = await fxService.getRate(resolvedCurrency, targetCoinType);
     } catch (e) {
-      // Graceful fallback
+      // Graceful fallback to default rate
     }
 
     const session: CheckoutSession = {
       token,
       nonce,
       amount,
-      currency,
+      currency: resolvedCurrency,
+      resolvedCurrency,
+      currencySymbol,
       merchantAddress: normalizedMerchantAddress,
       metadata: metadata || {},
       status: "PENDING",
@@ -88,13 +113,15 @@ router.post("/session", rateLimiter, async (req: Request, res: Response) => {
       estimatedRate
     };
 
-    // Cache session in Redis for 24h
     await redisService.setSession(nonce, session);
-    // Also index the token to the nonce mapping
     await redisService.setSession(`token:${token}`, { nonce });
 
-    logger.info("CHECKOUT", `Created checkout session. Nonce: ${nonce}, Amount: ${currency} ${amount}`);
-    return res.json({ ...session, supportedCoins: getSupportedCoinList() });
+    logger.info("CHECKOUT", `Created checkout session. Nonce: ${nonce}, Amount: ${currencySymbol}${amount} ${resolvedCurrency}`);
+    return res.json({
+      ...session,
+      supportedCoins: getSupportedCoinList(),
+      supportedFiatCurrencies: getFiatCurrencyList().map((c) => c.code),
+    });
   } catch (err: any) {
     logger.error("CHECKOUT", `Session creation failed: ${err.message}`);
     return res.status(400).json({ error: err.message || "Failed to create checkout session." });
@@ -112,7 +139,6 @@ router.post("/charge", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Missing token or charge method." });
   }
 
-  // Resolve nonce from token
   const mapping = await redisService.getSession(`token:${token}`);
   if (!mapping) {
     logger.warn("CHECKOUT", `Invalid checkout session token verification request: ${token}`);
@@ -124,6 +150,9 @@ router.post("/charge", async (req: Request, res: Response) => {
     return res.status(404).json({ error: "Checkout session expired or not found." });
   }
 
+  const resolvedCurrency = session.resolvedCurrency || session.currency || getDefaultCurrency();
+  const currencySymbol = session.currencySymbol || getFiatCurrency(resolvedCurrency)?.symbol || resolvedCurrency;
+
   try {
     session.merchantAddress = normalizeMerchantAddress(session.merchantAddress);
   } catch (err: any) {
@@ -132,28 +161,24 @@ router.post("/charge", async (req: Request, res: Response) => {
   }
 
   try {
-    // STEP 1: Fetch FRESH FX rate (skip cache for accuracy at payment confirmation)
     const sessionCoinType = session.coinType || getDefaultCoin().type;
-    let currentRate = 1300;
+    let currentRate = getDefaultRate(resolvedCurrency);
     try {
-      currentRate = await fxService.getRateNGNToToken(sessionCoinType, true); // skipCache=true
-      logger.info("CHECKOUT", `Fresh FX rate fetched for ${method} charge on nonce ${session.nonce}: ₦${currentRate} per token`);
+      currentRate = await fxService.getRate(resolvedCurrency, sessionCoinType, true);
+      logger.info("CHECKOUT", `Fresh FX rate fetched for ${method} charge on nonce ${session.nonce}: ${currencySymbol}${currentRate} per token`);
     } catch (e: any) {
       logger.warn("CHECKOUT", `Failed to fetch fresh FX rate, using session estimated rate: ${e.message}`);
-      currentRate = session.estimatedRate || 1300;
+      currentRate = session.estimatedRate || getDefaultRate(resolvedCurrency);
     }
 
-    // STEP 2: Calculate settlement amount with fresh rate
     const decimals = getDecimals(sessionCoinType);
     const settlementAmount = Math.floor((session.amount / currentRate) * 10 ** decimals);
-    logger.info("CHECKOUT", `Calculated settlement: ₦${session.amount} @ ₦${currentRate}/token = ${settlementAmount / 10 ** decimals} token(s) for nonce ${session.nonce}`);
+    logger.info("CHECKOUT", `Calculated settlement: ${currencySymbol}${session.amount} @ ${currencySymbol}${currentRate}/token = ${settlementAmount / 10 ** decimals} token(s) for nonce ${session.nonce}`);
 
-    // STEP 3: Pre‑flight treasury balance verification
     if (!(await assertTreasurySufficient(settlementAmount, sessionCoinType, session.nonce, res))) {
-      return; // response already sent by helper
+      return;
     }
 
-    // STEP 4: Update session with validated fresh rate & settlement amount
     await redisService.updateSessionStatus(session.nonce, "PENDING", {
       validatedRate: currentRate,
       settlementAmount,
@@ -161,16 +186,12 @@ router.post("/charge", async (req: Request, res: Response) => {
       chargeApproved: true
     });
 
-    // STEP 5: Proceed with bank charge or OPay based on method
     if (method === "bank_transfer") {
-      // Idempotency guard: if a virtual account was already allocated for this session,
-      // return it instead of creating a duplicate charge (which Flutterwave rejects on re-used tx_ref).
       if (session.virtualAccount && session.flwTransactionId) {
         logger.info("CHECKOUT", `Reusing existing virtual account for session ${session.nonce}: ${session.virtualAccount.bankName} ${session.virtualAccount.accountNumber}`);
         return res.json({ status: "success", virtualAccount: session.virtualAccount, validatedRate: currentRate });
       }
 
-      // Allocate virtual account via Flutterwave V3
       const va = await flutterwaveService.chargeBankTransfer({
         txRef: session.nonce,
         amount: session.amount,
@@ -178,27 +199,24 @@ router.post("/charge", async (req: Request, res: Response) => {
         phoneNumber
       });
 
-      // Save billing details in Redis session
       await redisService.updateSessionStatus(session.nonce, "PENDING", {
         method: "bank_transfer",
         virtualAccount: va,
         flwTransactionId: va.transactionId
       });
 
-      // Start background polling to verify transaction (backup for webhooks)
       logger.info("CHECKOUT", `Bank transfer charge result for ${session.nonce}: transactionId=${va.transactionId ?? "null"}`);
       startTransactionPolling(session.nonce, currentRate, sessionCoinType, va.transactionId, session.nonce).catch((err: any) => {
         logger.warn("CHECKOUT", `Transaction polling failed for ${session.nonce}: ${err.message}`);
       });
 
-      logger.info("CHECKOUT", `Allocated dynamic virtual account for session ${session.nonce}: ${va.bankName} ${va.accountNumber} | Rate: ₦${currentRate}`);
+      logger.info("CHECKOUT", `Allocated dynamic virtual account for session ${session.nonce}: ${va.bankName} ${va.accountNumber} | Rate: ${currencySymbol}${currentRate}`);
       return res.json({ status: "success", virtualAccount: va, validatedRate: currentRate });
     } else if (method === "opay") {
       if (!phoneNumber) {
         return res.status(400).json({ error: "Phone number is required for OPay payments." });
       }
 
-      // Idempotency guard: if OPay charge was already initiated, return existing state
       if (session.method === "opay" && session.flwTransactionId) {
         logger.info("CHECKOUT", `Reusing existing OPay charge for session ${session.nonce}`);
         return res.json({ status: "success", opayAuthorizationUrl: session.authorizationUrl, validatedRate: currentRate });
@@ -221,34 +239,25 @@ router.post("/charge", async (req: Request, res: Response) => {
         flwTransactionId: transactionId
       });
 
-      // Start background polling to verify OPay transaction (backup for webhooks)
       startTransactionPolling(session.nonce, currentRate, sessionCoinType, transactionId, session.nonce).catch((err: any) => {
         logger.warn("CHECKOUT", `OPay transaction polling failed for ${session.nonce}: ${err.message}`);
       });
 
-      logger.info("CHECKOUT", `Dispatched OPay redirect charge to ${phoneNumber} for session ${session.nonce} | Rate: ₦${currentRate}`);
+      logger.info("CHECKOUT", `Dispatched OPay redirect charge to ${phoneNumber} for session ${session.nonce} | Rate: ${currencySymbol}${currentRate}`);
       return res.json({ status: "success", opayAuthorizationUrl: authorizationUrl, validatedRate: currentRate });
     } else if (method === "stripe") {
-          if (session.currency === "NGN") {
-            let usdToNgnRate = 1300;
-            try {
-              usdToNgnRate = await fxService.getUSDToNGNRate(true);
-            } catch (e: any) {
-              logger.warn("CHECKOUT", `Stripe minimum preflight using fallback FX rate: ${e.message}`);
-            }
-
-            const minimumNgnAmount = Math.ceil(0.5 * usdToNgnRate);
-            if (session.amount < minimumNgnAmount) {
-              return res.status(400).json({
-                status: "error",
-                message: `Card payments need at least ₦${minimumNgnAmount.toLocaleString()} right now. Please use bank transfer for smaller amounts.`
-              });
-            }
-          }
+      const currencyCfg = getFiatCurrency(resolvedCurrency);
+      const minChargeAmount = currencyCfg?.minChargeAmount;
+      if (minChargeAmount && session.amount < minChargeAmount) {
+        return res.status(400).json({
+          status: "error",
+          message: `Card payments need at least ${currencySymbol}${minChargeAmount.toLocaleString()} right now. Please use bank transfer for smaller amounts.`
+        });
+      }
 
       const clientSecret = await stripeService.createPaymentIntent(
         session.amount,
-        session.currency,
+        resolvedCurrency,
         session.nonce,
         { merchantAddress: session.merchantAddress }
       );
@@ -260,7 +269,7 @@ router.post("/charge", async (req: Request, res: Response) => {
 
       const stripePublicKey = process.env.STRIPE_PUBLIC_KEY || "pk_test_TYooMQauvdEDq54NiTphI7jx";
 
-      logger.info("CHECKOUT", `Created Stripe PaymentIntent for session ${session.nonce} | Rate: ₦${currentRate}`);
+      logger.info("CHECKOUT", `Created Stripe PaymentIntent for session ${session.nonce} | Rate: ${currencySymbol}${currentRate}`);
       return res.json({ status: "success", clientSecret, stripePublicKey, validatedRate: currentRate });
     } else {
       return res.status(400).json({ error: "Unsupported charge method." });
@@ -326,26 +335,24 @@ router.post("/crypto/intent", async (req: Request, res: Response) => {
 
   try {
     const sessionCoinType = reqCoinType || session.coinType || getDefaultCoin().type;
-    let rate = 1;
-    if (session.currency === "NGN") {
-      try {
-        rate = await fxService.getRateNGNToToken(sessionCoinType, true);
-      } catch (e: any) {
-        logger.warn("CHECKOUT", `Crypto intent FX fetch failed, using estimated rate: ${e.message}`);
-        rate = session.estimatedRate || 1300;
-      }
+    const resolvedCurrency = session.resolvedCurrency || session.currency || getDefaultCurrency();
+    const decimals = getDecimals(sessionCoinType);
+
+    let rate = getDefaultRate(resolvedCurrency);
+    try {
+      rate = await fxService.getRate(resolvedCurrency, sessionCoinType, true);
+    } catch (e: any) {
+      logger.warn("CHECKOUT", `Crypto intent FX fetch failed, using estimated rate: ${e.message}`);
+      rate = session.estimatedRate || getDefaultRate(resolvedCurrency);
     }
 
-    const decimals = getDecimals(sessionCoinType);
-    const amountBaseUnits = Math.floor(
-      session.currency === "NGN"
-        ? (session.amount / rate) * 10 ** decimals
-        : session.amount * 10 ** decimals
-    );
+    const amountBaseUnits = Math.floor((session.amount / rate) * 10 ** decimals);
 
     const invoiceMetadata = {
       nonce: session.nonce,
-      amountNaira: session.currency === "NGN" ? session.amount : 0,
+      amountFiat: session.amount,
+      fiatCurrency: resolvedCurrency,
+      amountNaira: resolvedCurrency === "NGN" ? session.amount : 0,
       exchangeRate: rate,
       amountSettled: amountBaseUnits / 10 ** decimals,
       settlementToken: sessionCoinType,
@@ -419,11 +426,13 @@ router.post("/crypto/confirm", async (req: Request, res: Response) => {
     }
 
     const confirmedTxDigest = txDigest;
-
+    const resolvedCurrency = session.resolvedCurrency || session.currency || getDefaultCurrency();
     const amountTokens = amountBaseUnits / 10 ** getDecimals(sessionCoinType);
     const invoiceMetadata = session.cryptoWalrusInvoice || {
       nonce: session.nonce,
-      amountNaira: session.currency === "NGN" ? session.amount : 0,
+      amountFiat: session.amount,
+      fiatCurrency: resolvedCurrency,
+      amountNaira: resolvedCurrency === "NGN" ? session.amount : 0,
       exchangeRate: session.cryptoRate || 0,
       amountSettled: amountTokens,
       settlementToken: sessionCoinType,
@@ -436,19 +445,16 @@ router.post("/crypto/confirm", async (req: Request, res: Response) => {
     let walrusAlreadyStored = !!session.cryptoWalrusUploadedAt;
 
     if (!walrusBlobId) {
-      // Prepare blob ID without storing first (SDK mode) or store now (publisher mode)
       const resolved = await walrusService.resolveBlobId(invoiceMetadata);
       walrusBlobId = resolved.blobId;
       walrusAlreadyStored = resolved.alreadyStored;
     }
 
-    // On-chain payment is already verified - commit Walrus blob if not yet stored
     if (!walrusAlreadyStored && walrusBlobId) {
       try {
         await walrusService.uploadInvoice(invoiceMetadata);
       } catch (walrusErr: any) {
         logger.error("CHECKOUT", `Walrus post-verification commit failed for ${nonce}: ${walrusErr.message}`);
-        // Non-fatal: blob ID is deterministic; can be uploaded later
       }
     }
 
@@ -469,7 +475,6 @@ router.post("/crypto/confirm", async (req: Request, res: Response) => {
 /**
  * Endpoint: GET /v1/checkout/validate/:nonce
  * Pre-flight validation: checks if treasury has sufficient balance for the requested payment.
- * SDK calls this before showing "Confirm Payment" button.
  */
 router.get("/validate/:nonce", async (req: Request, res: Response) => {
   const nonce = req.params.nonce as string;
@@ -481,9 +486,10 @@ router.get("/validate/:nonce", async (req: Request, res: Response) => {
     }
 
     const coinType = session.coinType || getDefaultCoin().type;
-    let estimatedRate = session.estimatedRate || 1300;
+    const resolvedCurrency = session.resolvedCurrency || session.currency || getDefaultCurrency();
+    let estimatedRate = session.estimatedRate || getDefaultRate(resolvedCurrency);
     try {
-      estimatedRate = await fxService.getRateNGNToToken(coinType);
+      estimatedRate = await fxService.getRate(resolvedCurrency, coinType);
     } catch (e) {
       // Fallback to cached rate
     }
@@ -513,7 +519,6 @@ router.get("/validate/:nonce", async (req: Request, res: Response) => {
 /**
  * Endpoint: POST /v1/checkout/webhook
  * Dynamic bank transfer credit webhook receiver (PCI-DSS safe).
- * Validated by validateWebhookAuth middleware interceptor.
  */
 router.post("/webhook", validateWebhookAuth, async (req: Request, res: Response) => {
   const payload = req.body;
@@ -521,10 +526,9 @@ router.post("/webhook", validateWebhookAuth, async (req: Request, res: Response)
 
   if (status !== "successful") {
     logger.info("WEBHOOK", `Transaction ${tx_ref} not completed yet. Status: ${status}`);
-    return res.sendStatus(200); // Acknowledge to prevent retries
+    return res.sendStatus(200);
   }
 
-  // Load session from Redis cache
   const session = await redisService.getSession(tx_ref);
   if (!session) {
     logger.warn("WEBHOOK", `Received successful webhook for expired or unknown session: ${tx_ref}`);
@@ -542,35 +546,33 @@ router.post("/webhook", validateWebhookAuth, async (req: Request, res: Response)
   }
 
   try {
-    logger.info("WEBHOOK", `Processing bank credit alert. Nonce: ${tx_ref}, Amount: ₦${amount}`);
+    const resolvedCurrency = session.resolvedCurrency || session.currency || getDefaultCurrency();
+    const currencySymbol = session.currencySymbol || getFiatCurrency(resolvedCurrency)?.symbol || resolvedCurrency;
+    logger.info("WEBHOOK", `Processing bank credit alert. Nonce: ${tx_ref}, Amount: ${currencySymbol}${amount}`);
 
-    // Update status to PROCESSING to prevent concurrent webhook execution collisions
     await redisService.updateSessionStatus(session.nonce, "PROCESSING");
 
-    // 1. Use validated rate from /charge endpoint (stored in session during payment confirmation)
-    // If not present (legacy sessions), fall back to fresh fetch with safe default
-    let currentRate = session.validatedRate || 1300;
     const sessionCoinType = session.coinType || getDefaultCoin().type;
+    let currentRate = session.validatedRate || getDefaultRate(resolvedCurrency);
 
     if (!session.validatedRate) {
       try {
-        currentRate = await fxService.getRateNGNToToken(sessionCoinType);
-        logger.warn("WEBHOOK", `Using fallback fresh FX rate (no validated rate in session): ₦${currentRate}`);
+        currentRate = await fxService.getRate(resolvedCurrency, sessionCoinType);
+        logger.warn("WEBHOOK", `Using fallback fresh FX rate (no validated rate in session): ${currencySymbol}${currentRate}`);
       } catch (e: any) {
-        logger.warn("WEBHOOK", `Failed to fetch FX rate, using default 1300: ${e.message}`);
-        currentRate = 1300;
+        logger.warn("WEBHOOK", `Failed to fetch FX rate, using default ${getDefaultRate(resolvedCurrency)}: ${e.message}`);
+        currentRate = getDefaultRate(resolvedCurrency);
       }
     } else {
-      logger.info("WEBHOOK", `Using pre-validated FX rate from /charge: ₦${currentRate}`);
+      logger.info("WEBHOOK", `Using pre-validated FX rate from /charge: ${currencySymbol}${currentRate}`);
     }
 
     const decimals = getDecimals(sessionCoinType);
     const settlementAmount = Math.floor((amount / currentRate) * 10 ** decimals);
     let walrusBlobId: string;
     let walrusAlreadyStored = false;
-    logger.info("WEBHOOK", `Settlement calculation: ₦${amount} @ ₦${currentRate}/token = ${settlementAmount / 10 ** decimals} token(s)`);
+    logger.info("WEBHOOK", `Settlement calculation: ${currencySymbol}${amount} @ ${currencySymbol}${currentRate}/token = ${settlementAmount / 10 ** decimals} token(s)`);
 
-    // 2. Resolve Walrus blob ID (prepare in SDK mode, upload in publisher mode) with Redis lock
     const lockKey = `uploadLock:${session.nonce}`;
     let lockOwner: string | null = null;
     try {
@@ -597,7 +599,9 @@ router.post("/webhook", validateWebhookAuth, async (req: Request, res: Response)
         } else {
           const invoiceMetadata = {
             nonce: session.nonce,
-            amountNaira: amount,
+            amountFiat: amount,
+            fiatCurrency: resolvedCurrency,
+            amountNaira: resolvedCurrency === "NGN" ? amount : 0,
             exchangeRate: currentRate,
             amountSettled: settlementAmount / 10 ** decimals,
             settlementToken: sessionCoinType,
@@ -605,8 +609,6 @@ router.post("/webhook", validateWebhookAuth, async (req: Request, res: Response)
             fiatMethod: session.method || "bank_transfer",
             timestamp: new Date().toISOString()
           };
-          // In SDK mode: prepareInvoice computes blobId without storing.
-          // In publisher mode: resolveBlobId uploads to get blobId.
           const resolved = await walrusService.resolveBlobId(invoiceMetadata);
           walrusBlobId = resolved.blobId;
           walrusAlreadyStored = resolved.alreadyStored;
@@ -618,7 +620,6 @@ router.post("/webhook", validateWebhookAuth, async (req: Request, res: Response)
       }
     }
 
-    // 3. Execute settle_fiat PTB on Sui via gRPC operator signer
     const onChainResult = await suiService.executeSettleFiat(
       settlementAmount,
       session.merchantAddress,
@@ -627,12 +628,13 @@ router.post("/webhook", validateWebhookAuth, async (req: Request, res: Response)
       sessionCoinType
     );
 
-    // 4. If SDK mode and blob was only prepared (not stored), commit it now after successful PTB
     if (!walrusAlreadyStored && walrusBlobId) {
       try {
         const invoiceMetadata = {
           nonce: session.nonce,
-          amountNaira: amount,
+          amountFiat: amount,
+          fiatCurrency: resolvedCurrency,
+          amountNaira: resolvedCurrency === "NGN" ? amount : 0,
           exchangeRate: currentRate,
           amountSettled: settlementAmount / 10 ** decimals,
           settlementToken: sessionCoinType,
@@ -644,12 +646,9 @@ router.post("/webhook", validateWebhookAuth, async (req: Request, res: Response)
         logger.success("WEBHOOK", `Walrus receipt committed after successful PTB: ${walrusBlobId}`);
       } catch (walrusErr: any) {
         logger.error("WEBHOOK", `Walrus post-PTB commit failed for ${session.nonce}: ${walrusErr.message}. Blob ID was already in receipt.`);
-        // Non-fatal: the blob ID was baked into the on-chain receipt.
-        // The merchant can retrieve the off-chain data from the on-chain event.
       }
     }
 
-    // 5. Update session inside Redis as fully SETTLED
     await redisService.updateSessionStatus(session.nonce, "SETTLED", {
       txDigest: onChainResult.txDigest,
       walrusBlobId
@@ -704,12 +703,14 @@ router.post("/stripe-webhook", async (req: Request, res: Response) => {
   }
 
   try {
-    logger.info("STRIPE-WEBHOOK", `Processing Stripe credit alert. Nonce: ${nonce}, Amount: ${paymentIntent.currency} ${amount}`);
+    const resolvedCurrency = session.resolvedCurrency || session.currency || getDefaultCurrency();
+    const currencySymbol = session.currencySymbol || getFiatCurrency(resolvedCurrency)?.symbol || resolvedCurrency;
+    logger.info("STRIPE-WEBHOOK", `Processing Stripe credit alert. Nonce: ${nonce}, Amount: ${resolvedCurrency} ${amount}`);
 
     await redisService.updateSessionStatus(session.nonce, "PROCESSING");
 
-    let currentRate = session.validatedRate || 1300;
     const sessionCoinType = session.coinType || getDefaultCoin().type;
+    let currentRate = session.validatedRate || getDefaultRate(resolvedCurrency);
     const decimals = getDecimals(sessionCoinType);
 
     const settlementAmount = Math.floor((session.amount / currentRate) * 10 ** decimals);
@@ -717,7 +718,9 @@ router.post("/stripe-webhook", async (req: Request, res: Response) => {
 
     const invoiceMetadata = {
       nonce: session.nonce,
-      amountNaira: session.amount,
+      amountFiat: session.amount,
+      fiatCurrency: resolvedCurrency,
+      amountNaira: resolvedCurrency === "NGN" ? session.amount : 0,
       exchangeRate: currentRate,
       amountSettled: settlementAmount / 10 ** decimals,
       settlementToken: sessionCoinType,
@@ -726,7 +729,6 @@ router.post("/stripe-webhook", async (req: Request, res: Response) => {
       timestamp: new Date().toISOString()
     };
 
-    // Resolve Walrus blob ID (prepare-then-upload-after-PTB in SDK mode) with idempotency lock
     const lockKey = `uploadLock:stripe:${session.nonce}`;
     let lockOwner: string | null = null;
     let walrusBlobId: string;
@@ -770,7 +772,6 @@ router.post("/stripe-webhook", async (req: Request, res: Response) => {
       sessionCoinType
     );
 
-    // Commit Walrus blob after successful PTB (SDK mode only)
     if (!walrusAlreadyStored && walrusBlobId) {
       try {
         await walrusService.uploadInvoice(invoiceMetadata);
@@ -797,14 +798,12 @@ router.post("/stripe-webhook", async (req: Request, res: Response) => {
 /**
  * Endpoint: GET /v1/checkout/opay/callback
  * OPay redirect callback after user authorizes payment.
- * Displays a simple confirmation page while the actual settlement happens via Flutterwave webhook.
  */
 router.get("/opay/callback", (req: Request, res: Response) => {
   const txRef = req.query.tx_ref as string;
   const status = req.query.status as string;
   const isSuccess = status === "successful";
 
-  // Post status back to parent window (SDK modal) and auto-close
   res.send(`
     <!DOCTYPE html>
     <html><head><title>OPay ${isSuccess ? "Authorized" : "Status"}</title></head>
@@ -829,12 +828,10 @@ router.get("/opay/callback", (req: Request, res: Response) => {
 
 /**
  * Background polling to verify transactions.
- * Backup for webhooks - polls Flutterwave verify endpoint until transaction completes or times out.
- * Uses transactionId if available, falls back to tx_ref query.
  */
 async function startTransactionPolling(nonce: string, rate: number, coinType: string, transactionId?: number | null, txRef?: string) {
-  const POLL_INTERVAL = 10_000; // 10 seconds
-  const MAX_POLLS = 180; // 30 minutes
+  const POLL_INTERVAL = 10_000;
+  const MAX_POLLS = 180;
   const MAX_WAIT = POLL_INTERVAL * MAX_POLLS;
 
   logger.info("POLL", `Starting transaction polling for nonce ${nonce}, txId=${transactionId ?? "null"}, txRef=${txRef ?? "null"}`);
@@ -844,7 +841,6 @@ async function startTransactionPolling(nonce: string, rate: number, coinType: st
   while (Date.now() - startTime < MAX_WAIT) {
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
 
-    // Check if session was already processed (by webhook or previous poll)
     const session = await redisService.getSession(nonce);
     if (!session || session.status === "SETTLED" || session.status === "PROCESSING") {
       logger.info("POLL", `Session ${nonce} already ${session?.status || "expired"}, stopping poll.`);
@@ -894,11 +890,12 @@ async function processSettlement(nonce: string, paidAmount: number, rate: number
 
   await redisService.updateSessionStatus(nonce, "PROCESSING");
 
+  const resolvedCurrency = session.resolvedCurrency || session.currency || getDefaultCurrency();
+  const currencySymbol = session.currencySymbol || getFiatCurrency(resolvedCurrency)?.symbol || resolvedCurrency;
   const decimals = getDecimals(coinType);
   const settlementAmount = Math.floor((paidAmount / rate) * 10 ** decimals);
-  logger.info("SETTLE", `Processing settlement for ${nonce}: ₦${paidAmount} @ ₦${rate}/token = ${settlementAmount / 10 ** decimals} tokens`);
+  logger.info("SETTLE", `Processing settlement for ${nonce}: ${currencySymbol}${paidAmount} @ ${currencySymbol}${rate}/token = ${settlementAmount / 10 ** decimals} tokens`);
 
-  // Walrus blob resolution
   const lockKey = `uploadLock:${nonce}`;
   let walrusBlobId: string;
   let walrusAlreadyStored = false;
@@ -918,7 +915,9 @@ async function processSettlement(nonce: string, paidAmount: number, rate: number
       } else {
         const invoiceMetadata = {
           nonce: session.nonce,
-          amountNaira: paidAmount,
+          amountFiat: paidAmount,
+          fiatCurrency: resolvedCurrency,
+          amountNaira: resolvedCurrency === "NGN" ? paidAmount : 0,
           exchangeRate: rate,
           amountSettled: settlementAmount / 10 ** decimals,
           settlementToken: coinType,
@@ -935,7 +934,6 @@ async function processSettlement(nonce: string, paidAmount: number, rate: number
     if (lockOwner) await redisService.releaseLock(lockKey, lockOwner);
   }
 
-  // Sui settlement
   const onChainResult = await suiService.executeSettleFiat(
     settlementAmount,
     session.merchantAddress,
@@ -944,12 +942,13 @@ async function processSettlement(nonce: string, paidAmount: number, rate: number
     coinType
   );
 
-  // Commit blob if SDK mode
   if (!walrusAlreadyStored && walrusBlobId) {
     try {
       const invoiceMetadata = {
         nonce: session.nonce,
-        amountNaira: paidAmount,
+        amountFiat: paidAmount,
+        fiatCurrency: resolvedCurrency,
+        amountNaira: resolvedCurrency === "NGN" ? paidAmount : 0,
         exchangeRate: rate,
         amountSettled: settlementAmount / 10 ** decimals,
         settlementToken: coinType,

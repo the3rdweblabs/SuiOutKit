@@ -17,6 +17,8 @@ export interface CheckoutSession {
   nonce: string;
   amount: number;
   currency: string;
+  resolvedCurrency: string;
+  currencySymbol: string;
   merchantAddress: string;
   metadata: Record<string, any>;
   status: SessionStatus;
@@ -39,6 +41,8 @@ export interface CheckoutSession {
   cryptoWalrusBlobId?: string;
   cryptoWalrusInvoice?: {
     nonce: string;
+    amountFiat: number;
+    fiatCurrency: string;
     amountNaira: number;
     exchangeRate: number;
     amountSettled: number;
