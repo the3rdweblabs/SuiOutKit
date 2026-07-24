@@ -215,7 +215,7 @@ Author: @CYBWithFlourish (https://github.com/CYBWithFlourish)
             card.innerHTML = `
               <span class="badge">Payment Complete</span>
               <h1>Thank You!</h1>
-              <p>Your payment of <strong>₦1,000</strong> has been confirmed on-chain.</p>
+              <p>Your payment of <strong>₦${session.amount.toLocaleString()}</strong> has been confirmed on-chain.</p>
               <div class="status ok" style="margin-top:16px;">
                 Tx Digest: ${txDigest}<br>
                 Walrus Blob ID: ${walrusBlobId}
