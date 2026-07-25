@@ -245,10 +245,19 @@ Author: @CYBWithFlourish (https://github.com/CYBWithFlourish)
           statusEl.className = "status";
 
           try {
+            const usdcSettlements = ["USD", "EUR", "GBP", "CAD", "AUD"];
+            const multiTokenSettlements = ["INR", "BRL", "ZAR"];
+            let settlementToken = undefined;
+            if (usdcSettlements.includes(currency)) {
+              settlementToken = "USDC";
+            } else if (multiTokenSettlements.includes(currency)) {
+              settlementToken = ["SUI", "USDC"];
+            }
             const session = await sdk.initCheckout({
               amount,
               currency,
-              metadata: { source: "demo(multi-currency local).html", currency }
+              metadata: { source: "demo(multi-currency local).html", currency },
+              ...(settlementToken ? { settlementToken } : {})
             });
             statusEl.textContent = `Session created (${session.resolvedCurrency || currency}). Opening modal...`;
             sdk.openModal(session, {
