@@ -55,6 +55,11 @@ class FXService {
     const apiKeyPro = getEnv("COINGECKO_API_KEY_PRO", "");
     const vsCurrencies = getCoingeckoVsCurrencies();
 
+    // Always include USD as fallback for conversion
+    if (!vsCurrencies.includes("usd")) {
+      vsCurrencies.push("usd");
+    }
+
     const tryFetch = async (baseUrl: string, keyParam: string) => {
       const url = `${baseUrl}/simple/price?ids=${coinId}&vs_currencies=${vsCurrencies.join(",")}${keyParam}`;
       const res = await fetch(url);
@@ -87,16 +92,25 @@ class FXService {
 
     if (data) {
       const allPrices = data[coinId];
-      if (allPrices) {
+      if (allPrices && Object.keys(allPrices).length > 0) {
         this.coinPriceCache[coinId] = { prices: allPrices, timestamp: Date.now() };
         console.log(`[FX SERVICE]: Fetched prices for ${coinId} in ${Object.keys(allPrices).length} currencies`);
+      } else {
+        console.warn(`[FX SERVICE]: CoinGecko returned empty prices for ${coinId}, response:`, JSON.stringify(data).substring(0, 200));
       }
 
       const result: Record<string, number> = {};
+      const usdPrice = allPrices?.usd;
+
       for (const c of currencies) {
         const cfg = getFiatCurrency(c);
         if (cfg && allPrices?.[cfg.coingeckoId] !== undefined) {
           result[c] = allPrices[cfg.coingeckoId];
+        } else if (usdPrice && usdPrice > 0) {
+          // Fallback: convert from USD via fiat-to-fiat rate
+          const fiatRate = await this.getFiatToFiatRate("USD", c, true);
+          result[c] = usdPrice * fiatRate;
+          console.log(`[FX SERVICE]: ${coinId}/${c} converted from USD: ${usdPrice} * ${fiatRate} = ${result[c]}`);
         } else {
           result[c] = getDefaultRate(c);
         }
@@ -129,6 +143,16 @@ class FXService {
 
     if (rate && rate > 0) {
       return rate;
+    }
+
+    // Fallback: get USD price and convert
+    const usdPrices = await this.getCoinPrices(coinType, ["USD"], skipCache);
+    const usdRate = usdPrices["USD"];
+    if (usdRate && usdRate > 0) {
+      const fiatRate = await this.getFiatToFiatRate("USD", currency, skipCache);
+      const convertedRate = usdRate * fiatRate;
+      console.log(`[FX SERVICE]: ${currency}/${coinType} fallback via USD: ${usdRate} * ${fiatRate} = ${convertedRate}`);
+      return convertedRate;
     }
 
     console.warn(`[FX SERVICE]: No rate for ${currency}/${coinType}, using default`);
