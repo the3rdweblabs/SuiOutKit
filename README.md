@@ -11,8 +11,10 @@ Universal payment gateway for merchants: accept **fiat** (bank transfer, OPay, c
 
 ## Features
 
-- **Fiat checkout** - Flutterwave (bank transfer, OPay) and Stripe (cards) - 40+ fiat currencies with locale-aware formatting
+- **Fiat checkout** - Flutterwave (bank transfer, OPay, USSD) and Stripe (cards) - 40+ fiat currencies with locale-aware formatting
 - **Crypto checkout** - Sui wallet and outPay via Mysten Payment Kit
+- **Settlement tokens** - Merchant chooses settlement coin (SUI, USDC, DEEP, WAL, etc.) per checkout; multiple token options supported
+- **Cross-region payments** - USD-settled merchants can accept NGN/GHS/KES from local customers via Flutterwave
 - **On-chain settlement** - Operator treasury releases tokens; Payment Kit enforces nonce uniqueness
 - **Receipts** - `SuiOutKitReceipt` on Sui + structured invoice blobs on Walrus
 - **Treasury gating** - Charges blocked when the vault cannot cover the FX-derived settlement amount
@@ -30,6 +32,7 @@ Quick links to common helpers and implementation entry points used by integrator
 - SDK
        - [sdk/src/index.ts](sdk/src/index.ts) - package entry and `SuiOutKit` class
        - [sdk/src/config/api.ts](sdk/src/config/api.ts) - API origin and path helpers
+       - [sdk/src/config/currencies.ts](sdk/src/config/currencies.ts) - 40+ fiat currency definitions with `decimals`
        - [sdk/src/utils/http.ts](sdk/src/utils/http.ts) - `request` helper (timeout, retries)
        - [sdk/src/utils/format.ts](sdk/src/utils/format.ts) - `formatCurrency`, `formatToken`, `toTokenUnits`
        - [sdk/src/hooks/usePaymentStatus.ts](sdk/src/hooks/usePaymentStatus.ts) - SSE/react helper
@@ -37,10 +40,14 @@ Quick links to common helpers and implementation entry points used by integrator
        - [backend/src/index.ts](backend/src/index.ts) - HTTP entry (Express app)
        - [backend/src/routes/checkout.ts](backend/src/routes/checkout.ts) - session, charge, webhook handlers
        - [backend/src/routes/payments.ts](backend/src/routes/payments.ts) - SSE payment stream
-       - [backend/src/config/coins.ts](backend/src/config/coins.ts) - multi-token config loader
+       - [backend/src/config/coins.ts](backend/src/config/coins.ts) - multi-token config loader (network-aware, `CoinCategory`)
+       - [backend/src/config/currencies.ts](backend/src/config/currencies.ts) - 40+ fiat currency definitions
+       - [backend/src/services/fx.ts](backend/src/services/fx.ts) - CoinGecko FX rates with USD fallback
+       - [backend/src/services/geo.ts](backend/src/services/geo.ts) - IP geolocation for currency auto-detection
        - [backend/src/services/sui.ts](backend/src/services/sui.ts) - on-chain interaction and settlement helpers
        - [backend/src/services/walrus.ts](backend/src/services/walrus.ts) - invoice upload helper
        - [backend/src/services/redis.ts](backend/src/services/redis.ts) - session store and locks
+       - [backend/src/scripts/treasury.ts](backend/src/scripts/treasury.ts) - treasury CLI (balance, wallet, deposit, withdraw)
 - Contracts
        - [contracts/suioutkit/sources/checkout.move](contracts/suioutkit/sources/checkout.move) - settlement logic
        - [contracts/suioutkit/sources/treasury.move](contracts/suioutkit/sources/treasury.move) - treasury management
@@ -82,7 +89,7 @@ SDK override: `mode: "local"` (localhost:5000, testnet) or `mode: "test"` (stagi
 
 ### Demo
 
-With the stack running, open [`demo/demo.html`](demo/demo.html) (NGN) or [`demo/demo(multi-currency(local)).html`](demo/demo(multi-currency(local)).html) (40+ currencies). Health: `http://localhost:5000/health`
+With the stack running, open [`demo/demo.html`](demo/demo.html) (NGN), [`demo/demo(multi-currency).html`](demo/demo(multi-currency).html) (40+ currencies with per-currency settlement tokens), or [`demo/demo(multi-currency(local)).html`](demo/demo(multi-currency(local)).html) (local backend). Health: `http://localhost:5000/health`
 
 An extended flow is in [`demo/demo-e2e.html`](demo/demo-e2e.html).
 
@@ -111,6 +118,7 @@ suioutkit/
 | [Hosted API](docs/hosted-api.md) | `api.suioutkit.xyz`, `/v1` routes, deploy checklist |
 | [Developer Guide](docs/developer-guide.md) | Contributors: architecture, env vars, CI |
 | [SDK README](sdk/README.md) | Merchant integration, API reference, custom UI |
+| [Changelog](docs/CHANGELOG.md) | Release history and notable changes |
 
 ### Source map (for contributors)
 
@@ -119,6 +127,10 @@ suioutkit/
 | HTTP entry | [`backend/src/index.ts`](backend/src/index.ts) |
 | Checkout routes | [`backend/src/routes/checkout.ts`](backend/src/routes/checkout.ts) |
 | Fiat currencies | [`backend/src/config/currencies.ts`](backend/src/config/currencies.ts) |
+| Settlement coins | [`backend/src/config/coins.ts`](backend/src/config/coins.ts) |
+| FX rates | [`backend/src/services/fx.ts`](backend/src/services/fx.ts) |
+| Treasury CLI | [`backend/src/scripts/treasury.ts`](backend/src/scripts/treasury.ts) |
+| IP geolocation | [`backend/src/services/geo.ts`](backend/src/services/geo.ts) |
 | Sui settlement | [`backend/src/services/sui.ts`](backend/src/services/sui.ts) |
 | Move settlement | [`contracts/suioutkit/sources/checkout.move`](contracts/suioutkit/sources/checkout.move) |
 | SDK entry | [`sdk/src/index.ts`](sdk/src/index.ts) |

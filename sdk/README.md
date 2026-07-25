@@ -72,6 +72,7 @@ sdk.wrapButton("#pay-btn", {
   amount: 29.99,
   currency: "USD",
   metadata: { sku: "PRO-PLAN" },
+  settlementToken: "USDC",     // optional
 });
 ```
 
@@ -100,6 +101,7 @@ const session = await sdk.initCheckout({
   amount: 29.99,       // integer or decimal in major units
   currency: "USD",     // any supported fiat currency code
   coinType?: "0x2::sui::SUI",  // optional: override settlement coin
+  settlementToken?: "USDC",    // optional: single token or ["SUI","USDC"]
   metadata?: { orderId: "ORDER-123" },
 });
 ```
@@ -115,7 +117,8 @@ const session = await sdk.initCheckout({
 | `currencySymbol` | Currency symbol (e.g. `€`, `R`, `₦`) |
 | `merchantAddress` | Normalized Sui address |
 | `coinType` | Settlement coin type (from backend config) |
-| `supportedCoins` | Array of `{ symbol, type, decimals }` for available settlement coins |
+| `supportedCoins` | Array of `{ symbol, type, decimals, category }` for available settlement coins |
+| `settlementToken` | Normalized settlement token(s) as `string[]` |
 | `estimatedRate` | FX preview (fiat → token) when applicable |
 | `supportedFiatCurrencies` | Array of supported fiat currency codes |
 | `packageId`, `cryptoRegistryId`, `cryptoRegistryName` | On-chain config for crypto paths |
@@ -234,11 +237,12 @@ The modal orchestrates these **charge** methods against the backend:
 |--------|----------|--------|
 | `bank_transfer` | Flutterwave | Virtual account details shown in modal |
 | `opay` | Flutterwave | Requires `phoneNumber` at charge time |
+| `ussd` | Flutterwave | USSD bank code; customer dials code to complete payment |
 | `stripe` | Stripe | Card element; currency-specific minimum enforced server-side (~$0.50 USD equivalent) |
 | `sui_wallet` | Sui + Payment Kit | Wallet connect via dApp Kit |
 | `outpay` | Payment Kit QR | outPay flow |
 
-Fiat methods depend on backend env configuration (Flutterwave / Stripe keys). Crypto methods require registry IDs on the backend.
+Fiat methods depend on backend env configuration (Flutterwave / Stripe keys). NGN customers see all fiat methods; non-NGN customers see card and crypto. Crypto methods require registry IDs on the backend.
 
 ## Custom UI (no modal)
 1. `initCheckout` → keep `session.token` and `session.nonce`.
@@ -272,10 +276,12 @@ Webhooks (`/v1/checkout/webhook`, `/v1/checkout/stripe-webhook`) are server-to-p
 |---------|----------------|
 | `Failed to initialize checkout session` | Backend down, CORS, or missing `merchantAddress` |
 | `409 Treasury insufficient` | Operator vault underfunded for FX settlement amount |
-| Modal stuck on “waiting for settlement” | Webhook not reaching backend (Flutterwave hash, Stripe CLI, or ngrok) |
+| `400 Unsupported coin type` | Settlement token not in `SUPPORTED_COINS` - check symbol and backend config |
+| Modal stuck on "waiting for settlement" | Webhook not reaching backend (Flutterwave hash, Stripe CLI, or ngrok) |
 | Stripe card errors on small amounts | Backend enforces ~$0.50 USD equivalent minimum per currency |
 | Crypto connect fails | Wrong `mode` or registry env on backend |
 | Styles missing | Backend not serving `/style.css` or wrong `backendUrl` |
+| Wrong token amounts (e.g. 0.something DEEP for ₦1000) | CoinGecko ID mismatch - verify `coingeckoId` in `SUPPORTED_COINS` matches CoinGecko slug |
 
 See also [Developer Guide - Troubleshooting](/docs/developer-guide.md#troubleshooting).
 
