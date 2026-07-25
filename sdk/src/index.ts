@@ -13,6 +13,7 @@ export { DEFAULT_API_ORIGIN, API_V1_PREFIX } from "./config/api.js";
 export class SuiOutKit {
   private backendUrl: string;
   private merchantAddress: string;
+  private settlementToken?: string | string[];
 
   constructor(config: SuiOutKitConfig) {
     if (!config.merchantAddress) {
@@ -22,6 +23,7 @@ export class SuiOutKit {
     const modeCfg = MODE_MAP[mode];
     this.backendUrl = (config.backendUrl || modeCfg.backendUrl).replace(/\/+$/, "");
     this.merchantAddress = config.merchantAddress;
+    this.settlementToken = config.settlementToken;
     (window as any).SuiOutKitNetwork = modeCfg.suiNetwork;
   }
 
@@ -30,6 +32,9 @@ export class SuiOutKit {
    */
   public async initCheckout(options: Omit<CheckoutSessionOptions, "merchantAddress">): Promise<CheckoutSession> {
     try {
+      const tokenToUse = options.settlementToken || this.settlementToken;
+      const tokenPayload = Array.isArray(tokenToUse) ? tokenToUse.join(",") : tokenToUse;
+
       const response = await fetch(joinApiPath(this.backendUrl, "checkout", "session"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -38,6 +43,7 @@ export class SuiOutKit {
           currency: options.currency,
           merchantAddress: this.merchantAddress,
           coinType: options.coinType,
+          settlementToken: tokenPayload,
           metadata: options.metadata || {}
         })
       });

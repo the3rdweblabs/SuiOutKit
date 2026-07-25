@@ -112,23 +112,71 @@ export class SuiOutKitModal {
     }, 50);
   }
 
+  private static readonly USSD_BANKS = [
+    { code: "044", name: "Access Bank", icon: "access" },
+    { code: "214", name: "FCMB", icon: "fcmb" },
+    { code: "011", name: "First Bank", icon: "firstbank" },
+    { code: "058", name: "GTBank", icon: "gtb" },
+    { code: "232", name: "Sterling Bank", icon: "sterling" },
+    { code: "033", name: "UBA", icon: "uba" },
+    { code: "032", name: "Union Bank", icon: "union" },
+    { code: "090110", name: "VFD MFB", icon: "vfd" },
+    { code: "035", name: "Wema Bank", icon: "wema" },
+    { code: "057", name: "Zenith Bank", icon: "zenith" }
+  ];
+
   private renderSelectionPanel() {
     const container = this.overlay?.querySelector("#sok-content-panel");
     if (!container) return;
 
-    const formattedAmount = formatCurrency(this.session.amount, this.session.resolvedCurrency || this.session.currency || "USD");
+    const currency = this.session.resolvedCurrency || this.session.currency || "USD";
+    const formattedAmount = formatCurrency(this.session.amount, currency);
+    const localAmount = this.session.localAmount;
+    const localCurrency = this.session.localCurrency;
+    const hasLocalAmount = !!localAmount && !!localCurrency && localCurrency !== currency;
+
+    const flutterwaveMethods = ["NGN", "GHS"];
+    const merchantSupports = flutterwaveMethods.includes(currency);
+    const localSupports = localCurrency ? flutterwaveMethods.includes(localCurrency) : false;
+    const isCrossRegion = hasLocalAmount && localCurrency !== currency;
+    const noGeoInfo = !localCurrency && !merchantSupports;
+
+    const bankTransferEnabled = merchantSupports || localSupports || noGeoInfo || isCrossRegion;
+    const opayEnabled = (currency === "NGN") || (localCurrency === "NGN") || noGeoInfo || isCrossRegion;
+    const ussdEnabled = (currency === "NGN") || (localCurrency === "NGN") || noGeoInfo || isCrossRegion;
+    
+    const supportedCoins = this.session.supportedCoins || [];
+    const merchantTokens = this.session.settlementToken;
+    let cryptoEnabled = true;
+    if (merchantTokens) {
+      const allowedTokens = Array.isArray(merchantTokens) ? merchantTokens : [merchantTokens];
+      cryptoEnabled = supportedCoins.some((c) => 
+        allowedTokens.some((t) => c.type.includes(t) || c.symbol.toUpperCase() === t.toUpperCase())
+      );
+    }
+
+    const crossRegionClass = (isCrossRegion || noGeoInfo) ? "suioutkit-option-cross-region" : "";
+    const crossRegionLabel = isCrossRegion
+      ? `<span class="suioutkit-option-cross-label">Pay in ${localCurrency} →</span>`
+      : noGeoInfo
+        ? `<span class="suioutkit-option-cross-label">Pay in NGN →</span>`
+        : "";
+
+    const disabledLabel = `<span class="suioutkit-option-unavailable">Not available in your region</span>`;
 
     container.innerHTML = `
       <div class="suioutkit-header">
         <h2 class="suioutkit-title">Checkout</h2>
-        <p class="suioutkit-subtitle">Select payment method to settle ${formattedAmount}</p>
+        <p class="suioutkit-subtitle">Select payment method to settle ${hasLocalAmount ? formatCurrency(localAmount!, localCurrency!) : formattedAmount}</p>
+        ${hasLocalAmount ? `<p class="suioutkit-subtitle" style="font-size: 12px; margin-top: 4px; opacity: 0.7;">(${formattedAmount})</p>` : ""}
       </div>
       <div class="suioutkit-body">
-        <button class="suioutkit-option" id="sok-method-bank">
+        <button class="suioutkit-option ${bankTransferEnabled ? crossRegionClass : "suioutkit-option-disabled"}" id="sok-method-bank" ${bankTransferEnabled ? "" : "disabled"}>
           <div class="suioutkit-option-content">
             <img src="${this.backendUrl}/assets/flutterwave.png" class="suioutkit-option-img" alt="Bank Transfer" />
-            <span class="suioutkit-option-name">Bank Transfer</span>
+            <span class="suioutkit-option-name">Bank Transfer${crossRegionLabel}</span>
           </div>
+          ${bankTransferEnabled ? "" : disabledLabel}
         </button>
 
         <button class="suioutkit-option" id="sok-method-stripe">
@@ -138,31 +186,50 @@ export class SuiOutKitModal {
           </div>
         </button>
 
-        <button class="suioutkit-option" id="sok-method-opay">
+        <button class="suioutkit-option ${opayEnabled ? crossRegionClass : "suioutkit-option-disabled"}" id="sok-method-opay" ${opayEnabled ? "" : "disabled"}>
           <div class="suioutkit-option-content">
             <img src="${this.backendUrl}/assets/opay.png" class="suioutkit-option-img" alt="OPay Account" />
-            <span class="suioutkit-option-name">OPay Account</span>
+            <span class="suioutkit-option-name">OPay Account${crossRegionLabel}</span>
           </div>
+          ${opayEnabled ? "" : disabledLabel}
         </button>
 
-        <button class="suioutkit-option" id="sok-method-crypto">
+        <button class="suioutkit-option ${ussdEnabled ? crossRegionClass : "suioutkit-option-disabled"}" id="sok-method-ussd" ${ussdEnabled ? "" : "disabled"}>
+          <div class="suioutkit-option-content">
+            <img src="${this.backendUrl}/assets/flutterwave.png" class="suioutkit-option-img" alt="USSD" />
+            <span class="suioutkit-option-name">USSD${crossRegionLabel}</span>
+          </div>
+          ${ussdEnabled ? "" : disabledLabel}
+        </button>
+
+        <button class="suioutkit-option ${cryptoEnabled ? "" : "suioutkit-option-disabled"}" id="sok-method-crypto" ${cryptoEnabled ? "" : "disabled"}>
           <div class="suioutkit-option-content">
             <img src="${this.backendUrl}/assets/sui.png" class="suioutkit-option-img" alt="Sui Wallet" />
             <span class="suioutkit-option-name">Sui Wallet</span>
           </div>
+          ${cryptoEnabled ? "" : disabledLabel}
         </button>
       </div>
     `;
 
     this.renderIcons();
 
-    container.querySelector("#sok-method-bank")?.addEventListener("click", () => this.handleCharge("bank_transfer"));
+    if (bankTransferEnabled) {
+      container.querySelector("#sok-method-bank")?.addEventListener("click", () => this.handleCharge("bank_transfer"));
+    }
     container.querySelector("#sok-method-stripe")?.addEventListener("click", () => void this.handleStripePaymentPanel());
-    container.querySelector("#sok-method-opay")?.addEventListener("click", () => this.renderOPayFormPanel());
-    container.querySelector("#sok-method-crypto")?.addEventListener("click", () => void this.handleCryptoPaymentPanel());
+    if (opayEnabled) {
+      container.querySelector("#sok-method-opay")?.addEventListener("click", () => this.renderOPayFormPanel());
+    }
+    if (ussdEnabled) {
+      container.querySelector("#sok-method-ussd")?.addEventListener("click", () => this.renderUssdBankGrid());
+    }
+    if (cryptoEnabled) {
+      container.querySelector("#sok-method-crypto")?.addEventListener("click", () => void this.handleCryptoPaymentPanel());
+    }
   }
 
-  private async handleCharge(method: "bank_transfer" | "opay", phoneNumber?: string) {
+  private async handleCharge(method: "bank_transfer" | "opay" | "ussd", phoneNumber?: string, accountBank?: string) {
     this.renderLoadingPanel("Allocating checkout session...");
 
     try {
@@ -172,7 +239,8 @@ export class SuiOutKitModal {
         body: JSON.stringify({
           token: this.session.token,
           method,
-          phoneNumber
+          phoneNumber,
+          accountBank
         })
       });
 
@@ -186,6 +254,12 @@ export class SuiOutKitModal {
             this.openOPayFlow(result.opayAuthorizationUrl);
           } else {
             this.renderErrorPanel("OPay authorization URL not received.");
+          }
+        } else if (method === "ussd") {
+          if (result.ussdCode) {
+            this.renderUssdCodePanel(result.ussdCode, result.paymentCode ?? null);
+          } else {
+            this.renderErrorPanel("USSD code not received.");
           }
         }
       } else {
@@ -272,16 +346,100 @@ export class SuiOutKitModal {
     `;
   }
 
+  private renderUssdBankGrid() {
+    const container = this.overlay?.querySelector("#sok-content-panel");
+    if (!container) return;
+
+    const banks = SuiOutKitModal.USSD_BANKS;
+
+    container.innerHTML = `
+      <button class="suioutkit-back" id="sok-back-btn">← Back to methods</button>
+      <div class="suioutkit-panel">
+        <h2 class="suioutkit-title">Select your bank</h2>
+        <div class="sok-ussd-bank-grid">
+          ${banks.map(bank => `
+            <button class="sok-ussd-bank-cell" data-bank-code="${bank.code}" data-bank-name="${bank.name}">
+              <img src="${this.backendUrl}/assets/banks/${bank.icon}.png" alt="${bank.name}" class="sok-ussd-bank-icon" />
+              <span class="sok-ussd-bank-name">${bank.name}</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+    `;
+
+    container.querySelector("#sok-back-btn")?.addEventListener("click", () => {
+      this.renderSelectionPanel();
+    });
+
+    container.querySelectorAll(".sok-ussd-bank-cell").forEach(cell => {
+      cell.addEventListener("click", () => {
+        const bankCode = cell.getAttribute("data-bank-code") || "";
+        this.handleCharge("ussd", undefined, bankCode);
+      });
+    });
+  }
+
+  private renderUssdCodePanel(ussdCode: string, paymentCode: string | null) {
+    const container = this.overlay?.querySelector("#sok-content-panel");
+    if (!container) return;
+
+    container.innerHTML = `
+      <button class="suioutkit-back" id="sok-back-btn">← Back to banks</button>
+      <div class="suioutkit-panel">
+        <h2 class="suioutkit-title">Complete payment</h2>
+        <p class="suioutkit-subtitle">Dial this code from your phone</p>
+
+        <div class="sok-ussd-code-box">
+          <div class="sok-copied-alert" id="sok-copy-bubble">Copied!</div>
+          <span id="sok-ussd-code" class="sok-ussd-code">${ussdCode}</span>
+          <button class="sok-copy-btn" id="sok-copy-ussd">Copy</button>
+        </div>
+
+        ${paymentCode ? `
+          <div class="sok-ussd-payment-code">
+            <p class="sok-ussd-payment-label">If prompted, enter payment code:</p>
+            <span class="sok-ussd-payment-value">${paymentCode}</span>
+          </div>
+        ` : ""}
+
+        <div id="sok-status-react"></div>
+        <p class="sok-status-text">Waiting for your payment...</p>
+      </div>
+    `;
+
+    container.querySelector("#sok-back-btn")?.addEventListener("click", () => {
+      this.stopPolling();
+      this.renderUssdBankGrid();
+    });
+
+    container.querySelector("#sok-copy-ussd")?.addEventListener("click", () => {
+      navigator.clipboard.writeText(ussdCode);
+      const bubble = container.querySelector("#sok-copy-bubble");
+      bubble?.classList.add("show");
+      setTimeout(() => bubble?.classList.remove("show"), 2000);
+    });
+
+    this.mountPaymentStatus(container as HTMLElement);
+    this.startPolling();
+  }
+
   private renderBankTransferPanel(va: any) {
     const container = this.overlay?.querySelector("#sok-content-panel");
     if (!container) return;
+
+    const hasLocalAmount = this.session.localAmount && this.session.localCurrency && this.session.localCurrency !== this.session.resolvedCurrency;
+    const displayAmount = hasLocalAmount ? this.session.localAmount! : va.amount;
+    const displayCurrency = hasLocalAmount ? this.session.localCurrency! : (this.session.resolvedCurrency || this.session.currency || "USD");
+    const formattedDisplayAmount = formatCurrency(displayAmount, displayCurrency);
+    const formattedMerchantAmount = hasLocalAmount ? formatCurrency(this.session.amount, this.session.resolvedCurrency || this.session.currency || "USD") : null;
 
     container.innerHTML = `
       <button class="suioutkit-back" id="sok-back-btn">← Back to methods</button>
       <div class="suioutkit-panel">
         <div class="suioutkit-amount-box">
           <p class="suioutkit-subtitle">Please transfer exactly</p>
-          <h2 class="sok-fiat-amt">${formatCurrency(va.amount, this.session.resolvedCurrency || this.session.currency || "USD")}</h2>
+          <h2 class="sok-fiat-amt">${formattedDisplayAmount}</h2>
+          ${formattedMerchantAmount ? `<p class="suioutkit-subtitle" style="font-size: 12px; margin-top: 4px; opacity: 0.7;">(${formattedMerchantAmount})</p>` : ""}
         </div>
 
         <div class="sok-va-card">
@@ -506,9 +664,24 @@ export class SuiOutKitModal {
     const container = this.overlay?.querySelector("#sok-content-panel");
     if (!container) return;
 
-    const coins = this.session.supportedCoins || [];
-    const currentCoin = this.session.coinType || "0x2::sui::SUI";
+    const allCoins = this.session.supportedCoins || [];
+    const merchantTokens = this.session.settlementToken;
+    
+    let coins = allCoins;
+    if (merchantTokens) {
+      const allowedTokens = Array.isArray(merchantTokens) ? merchantTokens : [merchantTokens];
+      coins = allCoins.filter((c) => 
+        allowedTokens.some((t) => c.type.includes(t) || c.symbol.toUpperCase() === t.toUpperCase())
+      );
+      if (coins.length === 0) coins = allCoins;
+    }
+
+    const currentCoin = this.session.coinType || coins[0]?.type || "0x2::sui::SUI";
     const currentSymbol = coins.find((c) => c.type === currentCoin)?.symbol || "SUI";
+
+    if (!this.session.coinType && coins.length > 0) {
+      this.session.coinType = coins[0].type;
+    }
 
     const coinChips = coins.length > 1
       ? `<div class="sok-coin-selector">${coins

@@ -8,6 +8,7 @@ export interface SuiOutKitConfig {
   merchantAddress: string;
   mode?: SuiOutKitMode;
   backendUrl?: string;
+  settlementToken?: string | string[];
 }
 
 export interface SupportedCoin {
@@ -21,6 +22,7 @@ export interface CheckoutSessionOptions {
   currency?: string;
   coinType?: string;
   metadata?: Record<string, any>;
+  settlementToken?: string | string[];
 }
 
 export interface CheckoutSession {
@@ -39,9 +41,12 @@ export interface CheckoutSession {
   estimatedRate?: number;
   supportedCoins?: SupportedCoin[];
   supportedFiatCurrencies?: string[];
+  localAmount?: number;
+  localCurrency?: string;
+  settlementToken?: string | string[];
 }
 
-export type ChargeMethod = "bank_transfer" | "opay" | "crypto" | "sui_wallet" | "outpay" | "stripe";
+export type ChargeMethod = "bank_transfer" | "opay" | "ussd" | "crypto" | "sui_wallet" | "outpay" | "stripe";
 
 export interface VirtualAccount {
   accountNumber: string;
@@ -54,6 +59,8 @@ export interface ChargeResponse {
   status: "success" | "pending" | "error";
   virtualAccount?: VirtualAccount;
   opayAuthorizationUrl?: string;
+  ussdCode?: string;
+  paymentCode?: string | null;
   clientSecret?: string;
   stripePublicKey?: string;
   message?: string;

@@ -167,6 +167,48 @@
   font-size: 15px;
   font-weight: 600;
   color: var(--sok-text);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 1;
+}
+
+.suioutkit-option-disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.suioutkit-option-disabled:hover {
+  background: transparent;
+  border-color: var(--sok-border);
+}
+
+.suioutkit-option-unavailable {
+  display: block;
+  font-size: 11px;
+  color: #999;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.suioutkit-option-disabled .suioutkit-option-img {
+  filter: grayscale(100%);
+}
+
+.suioutkit-option-cross-region {
+  opacity: 0.65;
+}
+
+.suioutkit-option-cross-region:hover {
+  opacity: 0.85;
+  border-color: var(--sok-accent);
+}
+
+.suioutkit-option-cross-label {
+  font-size: 11px;
+  color: var(--sok-text-muted);
+  font-weight: 400;
 }
 
 .suioutkit-panel {
@@ -719,6 +761,91 @@
   margin-bottom: 20px;
 }
 
+/* USSD Bank Grid */
+.sok-ussd-bank-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: 100%;
+  margin-top: 16px;
+}
+
+.sok-ussd-bank-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  background: transparent;
+  border: 1px solid var(--sok-border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.sok-ussd-bank-cell:hover {
+  background: rgba(120, 120, 120, 0.05);
+  border-color: var(--sok-accent);
+}
+
+.sok-ussd-bank-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: white;
+  padding: 2px;
+}
+
+.sok-ussd-bank-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sok-text);
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* USSD Code Display */
+.sok-ussd-code-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--sok-card-bg);
+  border: 1px solid var(--sok-border);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin: 16px 0;
+  width: 100%;
+}
+
+.sok-ussd-code {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--sok-text);
+  letter-spacing: 1px;
+  flex: 1;
+}
+
+.sok-ussd-payment-code {
+  text-align: center;
+  margin: 12px 0;
+}
+
+.sok-ussd-payment-label {
+  font-size: 13px;
+  color: var(--sok-text-muted);
+  margin: 0 0 4px;
+}
+
+.sok-ussd-payment-value {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: monospace;
+  color: var(--sok-accent);
+}
+
 @media (max-width: 480px) {
   .suioutkit-overlay {
     padding: 8px;
@@ -753,5 +880,14 @@
 
   .sok-success-details {
     padding: 12px;
+  }
+
+  .sok-ussd-bank-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .sok-ussd-code {
+    font-size: 16px;
   }
 }
