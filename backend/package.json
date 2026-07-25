@@ -8,10 +8,11 @@
   },
   "type": "module",
   "scripts": {
-     "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json",
     "start": "node --require ./crypto-polyfill.cjs dist/index.js",
     "dev": "tsc -w & nodemon dist/index.js",
     "treasury:balance": "node dist/scripts/treasury.js balance",
+    "treasury:wallet": "node dist/scripts/treasury.js wallet",
     "treasury:deposit": "node dist/scripts/treasury.js deposit",
     "treasury:withdraw": "node dist/scripts/treasury.js withdraw"
   },

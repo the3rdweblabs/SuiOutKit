@@ -23,15 +23,39 @@ async function findCoin(client: SuiGrpcClient, address: string, coinType: string
   const result = await client.listCoins({
     owner: address,
     coinType,
-    limit: 50,
+    limit: 10000,
   });
   const coins = result.objects || [];
   if (coins.length === 0) {
     throw new Error(`No ${coinType} coins found in operator wallet.`);
   }
-  const coin = coins.find((c: any) => BigInt(c.balance) >= amount) || coins[0];
-  console.log(`Using coin ${coin.objectId} with balance ${coin.balance}`);
-  return coin.objectId;
+  
+  // Try to find a single coin with enough balance
+  const singleCoin = coins.find((c: any) => BigInt(c.balance) >= amount);
+  if (singleCoin) {
+    console.log(`Using coin ${singleCoin.objectId} with balance ${singleCoin.balance}`);
+    return singleCoin.objectId;
+  }
+  
+  // No single coin has enough - need to merge multiple coins
+  // Sort by balance descending and merge until we have enough
+  const sorted = coins.sort((a: any, b: any) => Number(BigInt(b.balance) - BigInt(a.balance)));
+  let totalBalance = 0n;
+  const selectedCoins: string[] = [];
+  for (const coin of sorted) {
+    selectedCoins.push(coin.objectId);
+    totalBalance += BigInt(coin.balance);
+    if (totalBalance >= amount) break;
+  }
+  
+  if (totalBalance < amount) {
+    throw new Error(`Insufficient ${coinType} balance. Have ${totalBalance}, need ${amount}`);
+  }
+  
+  console.log(`Merging ${selectedCoins.length} coins (total: ${totalBalance}) for deposit`);
+  
+  // We'll return the first coin ID and handle merging in the caller
+  return JSON.stringify({ merge: selectedCoins, firstCoin: selectedCoins[0] });
 }
 
 async function getTreasuryAdminCap(client: SuiGrpcClient, address: string): Promise<string> {
@@ -60,13 +84,29 @@ async function main() {
   const cfg = rawTokenType ? getCoinConfig(rawTokenType) : undefined;
   const tokenType = cfg?.type || rawTokenType || getDefaultCoin().type;
 
-  if (!["deposit", "withdraw", "balance"].includes(command)) {
-    console.error("Usage: node dist/scripts/treasury.js <deposit|withdraw|balance> [amount] [coin_type]");
+  if (!["deposit", "withdraw", "balance", "wallet"].includes(command)) {
+    console.error("Usage: node dist/scripts/treasury.js <deposit|withdraw|balance|wallet> [amount] [coin_type]");
+    console.error("  balance  - check treasury contract balances");
+    console.error("  wallet   - check operator wallet balances");
+    console.error("  deposit  - deposit tokens into treasury");
+    console.error("  withdraw - withdraw tokens from treasury");
+    console.error("  coin_type can be symbol (SUI, USDC) or full type (0x2::sui::SUI)");
     process.exit(1);
   }
 
   if (!SUI_OPERATOR_PRIVATE_KEY || !PACKAGE_ID || !TREASURY_ID) {
     console.error("Missing required environment variables.");
+    process.exit(1);
+  }
+
+  console.log(`Network: ${SUI_NETWORK}`);
+  console.log(`Treasury ID: ${TREASURY_ID}`);
+  
+  const coins = getSupportedCoinList();
+  console.log(`Supported coins: ${coins.map(c => c.symbol).join(", ")}`);
+  
+  if (command !== "balance" && command !== "wallet" && !cfg && rawTokenType) {
+    console.error(`Unknown coin: ${rawTokenType}. Available: ${coins.map(c => c.symbol).join(", ")}`);
     process.exit(1);
   }
 
@@ -86,10 +126,30 @@ async function main() {
   const adminAddress = keypair.getPublicKey().toSuiAddress();
   console.log(`Operator Address: ${adminAddress}`);
 
+  if (command === "wallet") {
+    console.log(`\nOperator Wallet Balances (${SUI_NETWORK}):\n`);
+    for (const coin of coins) {
+      try {
+        const result = await client.getBalance({
+          owner: adminAddress,
+          coinType: coin.type,
+        });
+        const totalBalance = BigInt(result.balance?.balance || "0");
+        const displayBalance = Number(totalBalance) / 10 ** coin.decimals;
+        console.log(`  ${coin.symbol.padEnd(8)} ${displayBalance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 6 }).padStart(20)}`);
+      } catch (e: any) {
+        console.log(`  ${coin.symbol.padEnd(8)} ${"error".padStart(20)} (${e.message})`);
+      }
+    }
+    console.log(`\nSuiscan: https://suiscan.xyz/${SUI_NETWORK}/account/${adminAddress}`);
+    return;
+  }
+
   if (command === "balance") {
     const coins = getSupportedCoinList();
-    const SUISCAN_BASE = "https://suiscan.xyz/testnet/object";
-    console.log(`🔎 Treasury inspection link: ${SUISCAN_BASE}/${TREASURY_ID}`);
+    const SUISCAN_BASE = `https://suiscan.xyz/${SUI_NETWORK}/object`;
+    console.log(`\nTreasury Contract Balances (${SUI_NETWORK}):\n`);
+    console.log(`  Treasury: ${SUISCAN_BASE}/${TREASURY_ID}\n`);
     for (const coin of coins) {
       const inspectTx = new Transaction();
       inspectTx.moveCall({
@@ -146,8 +206,18 @@ async function main() {
     if (tokenType === "0x2::sui::SUI") {
       [coinToDeposit] = tx.splitCoins(tx.gas, [tx.pure.u64(amountBaseUnits)]);
     } else {
-      const sourceCoinId = await findCoin(client, adminAddress, tokenType, BigInt(amountBaseUnits));
-      [coinToDeposit] = tx.splitCoins(tx.object(sourceCoinId), [tx.pure.u64(amountBaseUnits)]);
+      const coinResult = await findCoin(client, adminAddress, tokenType, BigInt(amountBaseUnits));
+      if (coinResult.startsWith("{")) {
+        // Need to merge multiple coins
+        const { merge, firstCoin } = JSON.parse(coinResult);
+        if (merge.length > 1) {
+          console.log(`Merging ${merge.length} coins before deposit...`);
+          tx.mergeCoins(tx.object(firstCoin), merge.slice(1).map((id: string) => tx.object(id)));
+        }
+        [coinToDeposit] = tx.splitCoins(tx.object(firstCoin), [tx.pure.u64(amountBaseUnits)]);
+      } else {
+        [coinToDeposit] = tx.splitCoins(tx.object(coinResult), [tx.pure.u64(amountBaseUnits)]);
+      }
     }
     tx.moveCall({
       target: `${PACKAGE_ID}::treasury::deposit`,
