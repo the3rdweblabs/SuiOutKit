@@ -168,7 +168,7 @@ export class SuiOutKitModal {
       <div class="suioutkit-header">
         <h2 class="suioutkit-title">Checkout</h2>
         <p class="suioutkit-subtitle">Select payment method to settle ${hasLocalAmount ? formatCurrency(localAmount!, localCurrency!) : formattedAmount}</p>
-        ${hasLocalAmount ? `<p class="suioutkit-subtitle" style="font-size: 12px; margin-top: 4px; opacity: 0.7;">(${formattedAmount})</p>` : ""}
+        ${hasLocalAmount ? `<p class="sok-fiat-amt sok-op-75" style="font-size: 20px; margin-top: 2px;">(${formattedAmount})</p>` : ""}
       </div>
       <div class="suioutkit-body">
         <button class="suioutkit-option ${bankTransferEnabled ? crossRegionClass : "suioutkit-option-disabled"}" id="sok-method-bank" ${bankTransferEnabled ? "" : "disabled"}>
@@ -294,7 +294,7 @@ export class SuiOutKitModal {
       <div class="suioutkit-panel">
         <div class="sok-spinner"></div>
         <p class="sok-status-text">Waiting for OPay approval...</p>
-        <p style="font-size:12px; color:#888; margin-top:8px;">Complete payment in the OPay window</p>
+        <p class="sok-status-text" style="margin-top: 8px;">Complete payment in the OPay window</p>
       </div>
     `;
 
@@ -439,7 +439,7 @@ export class SuiOutKitModal {
         <div class="suioutkit-amount-box">
           <p class="suioutkit-subtitle">Please transfer exactly</p>
           <h2 class="sok-fiat-amt">${formattedDisplayAmount}</h2>
-          ${formattedMerchantAmount ? `<p class="suioutkit-subtitle" style="font-size: 12px; margin-top: 4px; opacity: 0.7;">(${formattedMerchantAmount})</p>` : ""}
+          ${formattedMerchantAmount ? `<p class="sok-fiat-amt sok-op-75" style="font-size: 20px; margin-top: 2px;">(${formattedMerchantAmount})</p>` : ""}
         </div>
 
         <div class="sok-va-card">
@@ -508,7 +508,7 @@ export class SuiOutKitModal {
       <div class="suioutkit-panel">
         <form class="sok-form" id="sok-opay-form" style="width: 100%;">
           <input type="tel" class="sok-input" placeholder="e.g. 08012345678" id="sok-phone-input" pattern="\\d{11}" maxlength="11" required />
-          <span class="sok-phone-error" id="sok-phone-error" style="display:none; color:#e74c3c; font-size:12px; margin-top:4px;">Enter a valid 11-digit phone number</span>
+          <span class="sok-phone-error sok-text-red" id="sok-phone-error" style="display:none; margin-top:4px;">Enter a valid 11-digit phone number</span>
           <button type="submit" class="sok-btn" id="sok-opay-submit" disabled>Continue</button>
         </form>
       </div>
@@ -550,7 +550,7 @@ export class SuiOutKitModal {
           <p class="suioutkit-subtitle">Check your phone to approve</p>
           <h2 class="sok-fiat-amt">OPay Prompt</h2>
         </div>
-        <p class="sok-status-text" style="margin-bottom: 20px; font-weight:600;">${promptText}</p>
+        <p class="sok-status-text sok-mb-20" style="font-weight:600;">${promptText}</p>
         <div class="sok-spinner"></div>
         <p class="sok-status-text">Waiting for your OPay confirmation...</p>
       </div>
@@ -605,7 +605,7 @@ export class SuiOutKitModal {
           <button class="sok-btn sok-btn-indigo" id="submit-stripe-btn">
             Pay Now
           </button>
-          <div id="payment-message" style="color: #ef4444; font-size: 13px; margin-top: 8px; text-align: center; display: none;"></div>
+          <div id="payment-message" class="sok-text-red" style="margin-top: 8px; text-align: center; display: none;"></div>
         </form>
       </div>
     `;
@@ -620,7 +620,7 @@ export class SuiOutKitModal {
 
       if (!this.stripeInstance) throw new Error("Stripe failed to load");
 
-      const appearance = { theme: 'night' as const, variables: { colorPrimary: '#6366f1', colorBackground: 'rgba(15,23,42,0.6)' } };
+      const appearance = { theme: 'night' as const, variables: { colorPrimary: '#4E75F8', colorBackground: '#121219' } };
       this.stripeElements = this.stripeInstance.elements({ appearance, clientSecret });
       const paymentElement = this.stripeElements.create("payment", {
         wallets: { link: 'never' }
@@ -806,7 +806,7 @@ export class SuiOutKitModal {
       <div class="suioutkit-wallet-list">
         ${walletCardsHtml}
       </div>
-      <p class="sok-status-text sok-text-sm sok-op-75" style="margin-top: 14px; text-align: center;">
+      <p class="sok-status-text sok-op-75 sok-mt-14" style="text-align: center;">
         Wallets are filtered from the browser extensions detected by dApp Kit.
       </p>
     `;
@@ -892,7 +892,7 @@ export class SuiOutKitModal {
         <p class="sok-status-text" style="max-width: 320px;">
           This page is running from a local file URL. Browser extension wallets like Slush and Phantom do not reliably inject into file:// pages, so dApp Kit cannot list them here.
         </p>
-        <p class="sok-status-text sok-text-sm sok-op-75" style="max-width: 320px;">
+        <p class="sok-status-text sok-op-75" style="max-width: 320px;">
           Open the demo over http://localhost or another web server, then reload. That is the supported origin for wallet detection and connection.
         </p>
       </div>
@@ -935,8 +935,8 @@ export class SuiOutKitModal {
         <p class="sok-status-text sok-mt-16">
           We couldn't find any installed Sui wallets. Please install a wallet extension like Phantom, Slush, or others from the app store and refresh the page.
         </p>
-        <p class="sok-status-text sok-text-sm sok-op-75 sok-mt-12">
-          Alternatively, you can use the outPay QR option to pay from a mobile wallet.
+        <p class="sok-status-text sok-op-75 sok-mt-12">
+          Alternatively, you can use the outPay QR option to pay from any Sui wallet.
         </p>
       </div>
     `;
@@ -964,7 +964,7 @@ export class SuiOutKitModal {
         <div class="sok-va-card">
           <div class="sok-va-row">
             <div class="sok-va-lbl">Amount</div>
-            <div class="sok-va-val" style="color: #10b981; font-weight: 700;">${formattedAmount}</div>
+            <div class="sok-va-val sok-text-green" style="font-weight: 700; font-size: 20px;">${formattedAmount}</div>
           </div>
           <div class="sok-va-row">
             <div class="sok-va-lbl">From Wallet</div>
@@ -1102,12 +1102,15 @@ export class SuiOutKitModal {
     const paymentUri = this.buildPaymentUri(this.cryptoIntent);
     const qrCodeUrl = await QRCode.toDataURL(paymentUri, { width: 300, margin: 2 });
 
+    const coins = this.session.supportedCoins || [];
+    const currentSymbol = coins.find((c) => c.type === this.cryptoIntent!.coinType)?.symbol || this.cryptoIntent.coinType.split("::").pop()?.toUpperCase() || "SUI";
+
     container.innerHTML = `
       <button class="suioutkit-back" id="sok-back-btn">← Back to Sui options</button>
       <div class="suioutkit-panel">
-        <div class="suioutkit-amount-box" style="margin-bottom: 12px;">
-          <p class="suioutkit-subtitle">Scan to approve and pay SUI/Tokens</p>
-          <h2 class="sok-fiat-amt" style="font-size: 24px; color: #10b981;">outPay Mobile</h2>
+        <div class="suioutkit-amount-box" style="margin-bottom: 8px;">
+          <p class="suioutkit-subtitle">Scan QR to pay with ${currentSymbol}</p>
+          <h2 class="sok-fiat-amt sok-text-green" style="font-size: 28px;">outPay</h2>
         </div>
 
         <div class="sok-qr-card">
@@ -1118,7 +1121,7 @@ export class SuiOutKitModal {
             </div>
             <div class="sok-qr-scan-pulse"></div>
           </div>
-          <p class="sok-status-text" style="font-size: 11px; word-break: break-all; opacity: 0.8; margin-bottom: 4px;">
+          <p class="sok-status-text sok-op-75" style="word-break: break-all; margin-bottom: 4px;">
             ${paymentUri.substring(0, 60)}...
           </p>
         </div>
@@ -1205,7 +1208,7 @@ export class SuiOutKitModal {
         <div class="sok-success-details">
           <div class="sok-receipt-row">
             <span class="sok-receipt-lbl">Amount Paid</span>
-            <span class="sok-receipt-val sok-text-green" style="font-weight:700;">
+            <span class="sok-receipt-val sok-text-green" style="font-weight:700; font-size: 18px;">
               ${formatCurrency(this.session.amount, this.session.resolvedCurrency || this.session.currency || "USD")}
             </span>
           </div>
