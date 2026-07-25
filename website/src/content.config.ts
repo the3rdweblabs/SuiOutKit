@@ -13,6 +13,7 @@ const docs = defineCollection({
       "guides/**/*.md",
       "developer-guide.md",
       "hosted-api.md",
+      "CHANGELOG.md",
     ],
   }),
   schema: z.object({

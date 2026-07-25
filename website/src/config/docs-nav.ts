@@ -11,6 +11,7 @@ export const docsNav: NavItem[] = [
       { title: "Installation", href: "/docs/getting-started/installation" },
       { title: "Quick Start", href: "/docs/getting-started/quick-start" },
       { title: "How It Works", href: "/docs/getting-started/how-it-works" },
+      { title: "First Settlement", href: "/docs/getting-started/first-settlement" },
     ],
   },
   {
@@ -19,6 +20,12 @@ export const docsNav: NavItem[] = [
       { title: "Architecture", href: "/docs/guides/architecture" },
       { title: "SDK Reference", href: "/docs/guides/sdk" },
       { title: "Currencies", href: "/docs/guides/currencies" },
+      { title: "Settlement Tokens", href: "/docs/guides/settlement-tokens" },
+      { title: "Coin Configuration", href: "/docs/guides/coin-configuration" },
+      { title: "Cross-Region Payments", href: "/docs/guides/cross-region" },
+      { title: "USSD Payments", href: "/docs/guides/ussd-payments" },
+      { title: "FX Rates", href: "/docs/guides/fx-rates" },
+      { title: "Treasury Management", href: "/docs/guides/treasury" },
       { title: "Backend API", href: "/docs/guides/backend-api" },
       { title: "Environment (operators)", href: "/docs/guides/environment" },
       { title: "Security", href: "/docs/guides/security" },
@@ -29,6 +36,7 @@ export const docsNav: NavItem[] = [
     children: [
       { title: "Hosted API", href: "/docs/hosted-api" },
       { title: "Developer Guide", href: "/docs/developer-guide" },
+      { title: "Changelog", href: "/docs/changelog" },
     ],
   },
 ];
