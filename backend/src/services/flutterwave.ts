@@ -14,6 +14,7 @@ const FLW_API_BASE = getEnv("FLW_API_BASE", "https://api.flutterwave.com/v3");
 export interface CreateChargeParams {
   txRef: string;
   amount: number;
+  currency: string;
   email: string;
   phoneNumber?: string;
   redirectUrl?: string;
@@ -84,7 +85,7 @@ class FlutterwaveService {
         body: JSON.stringify({
           tx_ref: params.txRef,
           amount: params.amount.toString(),
-          currency: "NGN",
+          currency: params.currency,
           email: params.email,
           phone_number: params.phoneNumber || "08000000000",
           fullname: "SuiOutKit Checkout Payer",
@@ -153,7 +154,7 @@ class FlutterwaveService {
         body: JSON.stringify({
           tx_ref: params.txRef,
           amount: params.amount.toString(),
-          currency: "NGN",
+          currency: params.currency,
           email: params.email,
           phone_number: params.phoneNumber,
           fullname: "SuiOutKit Checkout Payer",
@@ -182,6 +183,60 @@ class FlutterwaveService {
         ? err
         : new FlutterwaveServiceError(
           `Flutterwave OPay Charge Error: ${err.message || "Unable to reach Flutterwave."}`,
+          "FLW_PROVIDER_ERROR"
+        );
+    }
+  }
+
+  /**
+   * Initiates a USSD charge via Flutterwave.
+   * Returns the USSD code to dial and optional payment code.
+   */
+  public async chargeUSSD(params: CreateChargeParams & { accountBank: string }): Promise<{
+    ussdCode: string;
+    paymentCode: string | null;
+    transactionId: number | null;
+  }> {
+    this.assertValidConfig();
+
+    try {
+      const response = await fetch(`${FLW_API_BASE}/charges?type=ussd`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${FLW_SECRET_KEY}`,
+          Accept: "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          account_bank: params.accountBank,
+          amount: params.amount.toString(),
+          currency: params.currency,
+          email: params.email,
+          tx_ref: params.txRef,
+          fullname: "SuiOutKit Checkout Payer"
+        })
+      });
+
+      const result = await this.readJsonResponse(response);
+
+      logger.info("FLUTTERWAVE", `chargeUSSD response: httpStatus=${response.status}, status=${result.status}, message="${this.sanitizeLogValue(result.message || "")}", hasNote=${!!result.meta?.authorization?.note}`);
+
+      if (result.status === "success" && result.meta?.authorization?.note) {
+        return {
+          ussdCode: result.meta.authorization.note,
+          paymentCode: result.data?.payment_code || null,
+          transactionId: result.data?.id || null
+        };
+      }
+
+      logger.warn("FLUTTERWAVE", `chargeUSSD FAILED: httpStatus=${response.status}, body=${this.sanitizeLogValue(JSON.stringify(result))}`);
+      throw this.toProviderError("USSD charge", response, result);
+    } catch (err: any) {
+      this.logError("chargeUSSD", err);
+      throw err instanceof FlutterwaveServiceError
+        ? err
+        : new FlutterwaveServiceError(
+          `Flutterwave USSD Charge Error: ${err.message || "Unable to reach Flutterwave."}`,
           "FLW_PROVIDER_ERROR"
         );
     }

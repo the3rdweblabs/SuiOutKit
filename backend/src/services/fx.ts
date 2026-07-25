@@ -144,13 +144,42 @@ class FXService {
   }
 
   async getUSDToNGNRate(skipCache: boolean = false): Promise<number> {
-    const prices = await this.getCoinPrices("0x2::sui::SUI", ["NGN", "USD"], skipCache);
-    const ngnDefault = getDefaultRate("NGN");
-    const usdDefault = getDefaultRate("USD");
-    if (usdDefault > 0) {
-      return ngnDefault / usdDefault;
+    return this.getFiatToFiatRate("USD", "NGN", skipCache);
+  }
+
+  async getFiatToFiatRate(from: string, to: string, skipCache: boolean = false): Promise<number> {
+    if (from === to) return 1;
+
+    const fromCfg = getFiatCurrency(from);
+    const toCfg = getFiatCurrency(to);
+    if (!fromCfg || !toCfg) {
+      console.warn(`[FX SERVICE]: Unknown fiat pair ${from}/${to}, falling back to 1`);
+      return 1;
     }
-    return ngnDefault;
+
+    try {
+      const defaultCoin = "0x2::sui::SUI";
+      const prices = await this.getCoinPrices(defaultCoin, [from, to], skipCache);
+
+      const fromPrice = prices[from];
+      const toPrice = prices[to];
+
+      if (fromPrice && toPrice && fromPrice > 0) {
+        const rate = toPrice / fromPrice;
+        console.log(`[FX SERVICE]: Fiat-to-fiat rate ${from}/${to}: ${rate} (via CoinGecko)`);
+        return rate;
+      }
+    } catch (e: any) {
+      console.warn(`[FX SERVICE]: CoinGecko fiat-to-fiat failed, using defaults: ${e.message}`);
+    }
+
+    const defaultFrom = getDefaultRate(from);
+    const defaultTo = getDefaultRate(to);
+    if (defaultFrom > 0) {
+      return defaultTo / defaultFrom;
+    }
+
+    return 1;
   }
 }
 

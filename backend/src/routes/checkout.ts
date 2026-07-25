@@ -36,6 +36,22 @@ function normalizeMerchantAddress(address: string) {
   return normalizeSuiAddress(address);
 }
 
+function roundToCurrencyDecimals(amount: number, currencyCode: string): number {
+  const fiatCurrency = getFiatCurrency(currencyCode);
+  const decimals = fiatCurrency?.decimals ?? 2;
+  const multiplier = Math.pow(10, decimals);
+  return Math.round(amount * multiplier) / multiplier;
+}
+
+function normalizeSettlementTokens(token: any): string[] | undefined {
+  if (!token) return undefined;
+  if (Array.isArray(token)) return token.filter(Boolean);
+  if (typeof token === "string" && token.trim()) {
+    return token.split(",").map((t: string) => t.trim()).filter(Boolean);
+  }
+  return undefined;
+}
+
 function getClientIp(req: Request): string {
   const forwarded = req.headers["x-forwarded-for"];
   if (forwarded) {
@@ -49,11 +65,13 @@ function getClientIp(req: Request): string {
  * Initializes a new checkout session.
  */
 router.post("/session", rateLimiter, async (req: Request, res: Response) => {
-  const { amount, currency, merchantAddress, coinType, metadata } = req.body;
+  const { amount, currency, merchantAddress, coinType, metadata, settlementToken: sdkSettlementToken } = req.body;
 
   if (!amount || !merchantAddress) {
     return res.status(400).json({ error: "Missing required session parameters (amount, merchantAddress)." });
   }
+
+  const normalizedSettlementTokens = normalizeSettlementTokens(sdkSettlementToken);
 
   try {
     const nonce = crypto.randomUUID();
@@ -77,7 +95,7 @@ router.post("/session", rateLimiter, async (req: Request, res: Response) => {
     const currencySymbol = currencyCfg?.symbol || resolvedCurrency;
 
     const defaultCoin = getDefaultCoin();
-    const requestedCoin = coinType || defaultCoin.type;
+    const requestedCoin = sdkSettlementToken || coinType || defaultCoin.type;
     const coinCfg = getCoinConfig(requestedCoin);
     if (!coinCfg) {
       const supported = getSupportedCoinList().map((c) => c.type).join(", ");
@@ -95,6 +113,28 @@ router.post("/session", rateLimiter, async (req: Request, res: Response) => {
       // Graceful fallback to default rate
     }
 
+    let localAmount: number | undefined;
+    let localCurrency: string | undefined;
+    const geoCurrency = await geoService.detectCurrency(getClientIp(req));
+
+    if (geoCurrency && geoCurrency !== resolvedCurrency) {
+      try {
+        const fiatRate = await fxService.getFiatToFiatRate(resolvedCurrency, geoCurrency);
+        localAmount = roundToCurrencyDecimals(amount * fiatRate, geoCurrency);
+        localCurrency = geoCurrency;
+      } catch (e) {
+        // Graceful fallback: no local amount
+      }
+    } else if (!geoCurrency && !["NGN", "GHS"].includes(resolvedCurrency)) {
+      try {
+        const fiatRate = await fxService.getFiatToFiatRate(resolvedCurrency, "NGN");
+        localAmount = roundToCurrencyDecimals(amount * fiatRate, "NGN");
+        localCurrency = "NGN";
+      } catch (e) {
+        // Graceful fallback: no local amount
+      }
+    }
+
     const session: CheckoutSession = {
       token,
       nonce,
@@ -110,13 +150,16 @@ router.post("/session", rateLimiter, async (req: Request, res: Response) => {
       cryptoRegistryId: CRYPTO_REGISTRY_ID,
       cryptoRegistryName: CRYPTO_REGISTRY_NAME,
       coinType: targetCoinType,
-      estimatedRate
+      estimatedRate,
+      localAmount,
+      localCurrency,
+      settlementToken: normalizedSettlementTokens
     };
 
     await redisService.setSession(nonce, session);
     await redisService.setSession(`token:${token}`, { nonce });
 
-    logger.info("CHECKOUT", `Created checkout session. Nonce: ${nonce}, Amount: ${currencySymbol}${amount} ${resolvedCurrency}`);
+    logger.info("CHECKOUT", `Created checkout session. Nonce: ${nonce}, Amount: ${currencySymbol}${amount} ${resolvedCurrency}${localAmount && localCurrency ? ` (Local: ${localAmount} ${localCurrency})` : ""}`);
     return res.json({
       ...session,
       supportedCoins: getSupportedCoinList(),
@@ -133,7 +176,7 @@ router.post("/session", rateLimiter, async (req: Request, res: Response) => {
  * Validates treasury balance with fresh FX rate, then processes the dynamic payment charge.
  */
 router.post("/charge", async (req: Request, res: Response) => {
-  const { token, method, phoneNumber } = req.body;
+  const { token, method, phoneNumber, accountBank } = req.body;
 
   if (!token || !method) {
     return res.status(400).json({ error: "Missing token or charge method." });
@@ -161,7 +204,10 @@ router.post("/charge", async (req: Request, res: Response) => {
   }
 
   try {
-    const sessionCoinType = session.coinType || getDefaultCoin().type;
+    const merchantTokens = Array.isArray(session.settlementToken) ? session.settlementToken : session.settlementToken ? [session.settlementToken] : [];
+    const firstToken = merchantTokens[0];
+    const resolvedCoin = firstToken ? getCoinConfig(firstToken) : undefined;
+    const sessionCoinType = resolvedCoin?.type || session.coinType || getDefaultCoin().type;
     let currentRate = getDefaultRate(resolvedCurrency);
     try {
       currentRate = await fxService.getRate(resolvedCurrency, sessionCoinType, true);
@@ -186,6 +232,28 @@ router.post("/charge", async (req: Request, res: Response) => {
       chargeApproved: true
     });
 
+    const flutterwaveRequiredCurrency: Record<string, string[]> = {
+      bank_transfer: ["NGN", "GHS"],
+      opay: ["NGN"],
+      ussd: ["NGN"]
+    };
+
+    let chargeAmount = session.localAmount || session.amount;
+    let chargeCurrency = session.localCurrency || resolvedCurrency;
+
+    const requiredCurrencies = flutterwaveRequiredCurrency[method];
+    if (requiredCurrencies && !requiredCurrencies.includes(chargeCurrency)) {
+      const targetCurrency = requiredCurrencies[0];
+      try {
+        const fiatRate = await fxService.getFiatToFiatRate(resolvedCurrency, targetCurrency);
+        chargeAmount = roundToCurrencyDecimals(session.amount * fiatRate, targetCurrency);
+        chargeCurrency = targetCurrency;
+        logger.info("CHECKOUT", `Auto-converted for ${method}: ${currencySymbol}${session.amount} ${resolvedCurrency} → ${chargeAmount} ${chargeCurrency}`);
+      } catch (e: any) {
+        logger.warn("CHECKOUT", `Fiat conversion failed, using original amount: ${e.message}`);
+      }
+    }
+
     if (method === "bank_transfer") {
       if (session.virtualAccount && session.flwTransactionId) {
         logger.info("CHECKOUT", `Reusing existing virtual account for session ${session.nonce}: ${session.virtualAccount.bankName} ${session.virtualAccount.accountNumber}`);
@@ -194,7 +262,8 @@ router.post("/charge", async (req: Request, res: Response) => {
 
       const va = await flutterwaveService.chargeBankTransfer({
         txRef: session.nonce,
-        amount: session.amount,
+        amount: chargeAmount,
+        currency: chargeCurrency,
         email: `payer-${session.nonce.substring(0, 8)}@suioutkit.com`,
         phoneNumber
       });
@@ -227,7 +296,8 @@ router.post("/charge", async (req: Request, res: Response) => {
 
       const { authorizationUrl, transactionId } = await flutterwaveService.chargeOPay({
         txRef: session.nonce,
-        amount: session.amount,
+        amount: chargeAmount,
+        currency: chargeCurrency,
         email: `payer-${session.nonce.substring(0, 8)}@suioutkit.com`,
         phoneNumber,
         redirectUrl: opayRedirectUrl
@@ -245,6 +315,39 @@ router.post("/charge", async (req: Request, res: Response) => {
 
       logger.info("CHECKOUT", `Dispatched OPay redirect charge to ${phoneNumber} for session ${session.nonce} | Rate: ${currencySymbol}${currentRate}`);
       return res.json({ status: "success", opayAuthorizationUrl: authorizationUrl, validatedRate: currentRate });
+    } else if (method === "ussd") {
+      if (!accountBank) {
+        return res.status(400).json({ error: "Bank code is required for USSD payments." });
+      }
+
+      if (session.method === "ussd" && session.ussdCode && session.flwTransactionId) {
+        logger.info("CHECKOUT", `Reusing existing USSD charge for session ${session.nonce}`);
+        return res.json({ status: "success", ussdCode: session.ussdCode, paymentCode: session.paymentCode, validatedRate: currentRate });
+      }
+
+      const { ussdCode, paymentCode, transactionId } = await flutterwaveService.chargeUSSD({
+        txRef: session.nonce,
+        amount: chargeAmount,
+        currency: chargeCurrency,
+        email: `payer-${session.nonce.substring(0, 8)}@suioutkit.com`,
+        accountBank
+      });
+
+      await redisService.updateSessionStatus(session.nonce, "PENDING", {
+        method: "ussd",
+        accountBank,
+        ussdCode,
+        paymentCode,
+        flwTransactionId: transactionId
+      });
+
+      logger.info("CHECKOUT", `USSD charge result for ${session.nonce}: transactionId=${transactionId ?? "null"}, ussdCode=${ussdCode}`);
+
+      startTransactionPolling(session.nonce, currentRate, sessionCoinType, transactionId, session.nonce).catch((err: any) => {
+        logger.warn("CHECKOUT", `USSD transaction polling failed for ${session.nonce}: ${err.message}`);
+      });
+
+      return res.json({ status: "success", ussdCode, paymentCode, validatedRate: currentRate });
     } else if (method === "stripe") {
       const currencyCfg = getFiatCurrency(resolvedCurrency);
       const minChargeAmount = currencyCfg?.minChargeAmount;
@@ -256,8 +359,8 @@ router.post("/charge", async (req: Request, res: Response) => {
       }
 
       const clientSecret = await stripeService.createPaymentIntent(
-        session.amount,
-        resolvedCurrency,
+        chargeAmount,
+        chargeCurrency,
         session.nonce,
         { merchantAddress: session.merchantAddress }
       );

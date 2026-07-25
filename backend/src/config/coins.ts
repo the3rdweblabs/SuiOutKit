@@ -4,10 +4,13 @@
 // Author: @CYBWithFlourish (https://github.com/CYBWithFlourish)
 import { getEnv } from "./env.js";
 
+export type CoinCategory = "native" | "stablecoin" | "utility" | "defi";
+
 export interface CoinConfig {
   type: string;
   coingeckoId: string;
   decimals: number;
+  category: CoinCategory;
 }
 
 const DEFAULT_COINS: Record<string, CoinConfig> = {
@@ -15,31 +18,37 @@ const DEFAULT_COINS: Record<string, CoinConfig> = {
     type: "0x2::sui::SUI",
     coingeckoId: "sui",
     decimals: 9,
+    category: "native",
   },
 };
 
 function parseSupportedCoins(): Record<string, CoinConfig> {
-  const raw = getEnv("SUPPORTED_COINS", "");
+  const network = getEnv("SUI_NETWORK", "testnet").toLowerCase();
+  const networkKey = `SUPPORTED_COINS_${network.toUpperCase()}`;
+  const raw = getEnv(networkKey, "") || getEnv("SUPPORTED_COINS", "");
   const legacyTokenType = getEnv("SETTLEMENT_TOKEN_TYPE", "");
+
   if (!raw) {
     if (legacyTokenType) {
-      return { SUI: { type: legacyTokenType, coingeckoId: "sui", decimals: 9 } };
+      return { SUI: { type: legacyTokenType, coingeckoId: "sui", decimals: 9, category: "native" } };
     }
     return { ...DEFAULT_COINS };
   }
+
   try {
-    const parsed = JSON.parse(raw) as Record<string, { type: string; coingeckoId?: string; decimals?: number }>;
+    const parsed = JSON.parse(raw) as Record<string, { type: string; coingeckoId?: string; decimals?: number; category?: CoinCategory }>;
     const result: Record<string, CoinConfig> = {};
     for (const [symbol, cfg] of Object.entries(parsed)) {
       result[symbol.toUpperCase()] = {
         type: cfg.type,
         coingeckoId: cfg.coingeckoId || symbol.toLowerCase(),
         decimals: cfg.decimals ?? 9,
+        category: cfg.category || "utility",
       };
     }
     return Object.keys(result).length > 0 ? result : { ...DEFAULT_COINS };
   } catch {
-    console.warn("Failed to parse SUPPORTED_COINS, falling back to SUI-only.");
+    console.warn(`Failed to parse ${networkKey} or SUPPORTED_COINS, falling back to SUI-only.`);
     return { ...DEFAULT_COINS };
   }
 }
@@ -85,10 +94,11 @@ export function fromBaseUnits(amount: number, coinType: string): number {
   return amount / 10 ** decimals;
 }
 
-export function getSupportedCoinList(): Array<{ symbol: string; type: string; decimals: number }> {
+export function getSupportedCoinList(): Array<{ symbol: string; type: string; decimals: number; category: CoinCategory }> {
   return Object.entries(getCoins()).map(([symbol, cfg]) => ({
     symbol,
     type: cfg.type,
     decimals: cfg.decimals,
+    category: cfg.category,
   }));
 }

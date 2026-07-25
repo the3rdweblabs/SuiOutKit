@@ -20,15 +20,17 @@ export async function assertTreasurySufficient(
   try {
     const balanceCheck = await suiService.checkTreasuryBalance(settlementAmount, coinType);
     if (!balanceCheck.sufficient) {
+      const symbol = coinType.includes("::sui::SUI") ? "SUI" : coinType.includes("::usdc::USDC") ? "USDC" : coinType.split("::").pop()?.split("::")[0] || coinType;
       logger.warn(
         "CHECKOUT",
-        `Treasury insufficient. Available: ${balanceCheck.available}, Required: ${balanceCheck.required}, Nonce: ${nonce}`
+        `Treasury insufficient for ${symbol}. Available: ${balanceCheck.available}, Required: ${balanceCheck.required}, Nonce: ${nonce}`
       );
       res.status(409).json({
-        error: "Treasury insufficient for settlement",
+        error: `Treasury insufficient for ${symbol}. Fund treasury with ${symbol}.`,
         sufficient: false,
         availableBalance: balanceCheck.available,
-        requiredAmount: balanceCheck.required
+        requiredAmount: balanceCheck.required,
+        coinType
       });
       return false;
     }

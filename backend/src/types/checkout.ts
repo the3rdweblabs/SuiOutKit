@@ -30,7 +30,7 @@ export interface CheckoutSession {
   estimatedRate?: number;
   validatedRate?: number;
   settlementAmount?: number;
-  chargeMethod?: "bank_transfer" | "opay" | "stripe";
+  chargeMethod?: "bank_transfer" | "opay" | "ussd" | "stripe";
   chargeApproved?: boolean;
   cryptoAmountBaseUnits?: number;
   cryptoRate?: number;
@@ -51,18 +51,25 @@ export interface CheckoutSession {
     fiatMethod: string;
     timestamp: string;
   };
-  method?: "bank_transfer" | "opay" | "stripe";
+  method?: "bank_transfer" | "opay" | "ussd" | "stripe";
   virtualAccount?: VirtualAccountDetails;
   phoneNumber?: string;
+  ussdCode?: string;
+  paymentCode?: string | null;
+  accountBank?: string;
   clientSecret?: string;
   txDigest?: string;
   walrusBlobId?: string;
   error?: string;
+  localAmount?: number;
+  localCurrency?: string;
+  settlementToken?: string | string[];
 }
 
 export interface CreateChargeParams {
   txRef: string;
   amount: number;
+  currency: string;
   email: string;
   phoneNumber?: string;
 }
