@@ -8,9 +8,10 @@ Use these guides to integrate the SDK, run a local development stack, or operate
 
 | Doc | Description |
 |-----|-------------|
-| [Installation](./getting-started/installation.md) | Install the SDK — no backend required for merchants |
+| [Installation](./getting-started/installation.md) | Install the SDK - no backend required for merchants |
 | [Quick Start](./getting-started/quick-start.md) | Create a checkout in minutes |
-| [How It Works](./getting-started/how-it-works.md) | Checkout flow from the SDK’s perspective |
+| [How It Works](./getting-started/how-it-works.md) | Checkout flow from the SDK's perspective |
+| [First Settlement](./getting-started/first-settlement.md) | End-to-end walkthrough - config to on-chain settlement |
 
 ## Guides
 
@@ -19,6 +20,12 @@ Use these guides to integrate the SDK, run a local development stack, or operate
 | [Architecture](./guides/architecture.md) | How the SDK fits the hosted platform |
 | [SDK Reference](./guides/sdk.md) | `SuiOutKit` API summary (see also [SDK README](/sdk/README.md)) |
 | [Currencies](./guides/currencies.md) | Supported fiat currencies, formatting, geo detection, CoinGecko FX |
+| [Settlement Tokens](./guides/settlement-tokens.md) | Multi-token settlement, per-checkout overrides, coin categories |
+| [Coin Configuration](./guides/coin-configuration.md) | Coin types, CoinGecko IDs, decimals, adding custom tokens |
+| [Cross-Region Payments](./guides/cross-region.md) | Accepting local payments when merchant and customer currencies differ |
+| [USSD Payments](./guides/ussd-payments.md) | USSD bank payments via Flutterwave (NGN) |
+| [FX Rates](./guides/fx-rates.md) | CoinGecko pricing, USD fallback, debugging rate issues |
+| [Treasury Management](./guides/treasury.md) | Depositing, monitoring, and managing on-chain treasury balances |
 | [Backend API](./guides/backend-api.md) | Routes the SDK calls internally |
 | [Environment](./guides/environment.md) | Operator env vars (not required for merchants) |
 | [Security](./guides/security.md) | Production practices |
@@ -29,6 +36,7 @@ Use these guides to integrate the SDK, run a local development stack, or operate
 |-----|-------------|
 | [Hosted API](./hosted-api.md) | `api.suioutkit.xyz`, `/v1` routes, deploy checklist |
 | [Developer Guide](./developer-guide.md) | Deep dive for contributors and operators |
+| [Changelog](./CHANGELOG.md) | Release history and notable changes |
 
 ## Also
 

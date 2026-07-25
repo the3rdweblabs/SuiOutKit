@@ -9,13 +9,13 @@ SuiOutKit supports **40+ fiat currencies** with locale-aware formatting, IP-base
 
 | Code | Currency | Symbol | Decimals |
 |------|----------|--------|----------|
-| NGN | Nigerian Naira | ₦ | 0 |
+| NGN | Nigerian Naira | ₦ | 2 |
 | USD | US Dollar | $ | 2 |
 | GBP | British Pound | £ | 2 |
 | EUR | Euro | € | 2 |
 | CAD | Canadian Dollar | C$ | 2 |
 | AUD | Australian Dollar | A$ | 2 |
-| JPY | Japanese Yen | ¥ | 0 |
+| JPY | Japanese Yen | ¥ | 2 |
 | INR | Indian Rupee | ₹ | 2 |
 | BRL | Brazilian Real | R$ | 2 |
 | MXN | Mexican Peso | MX$ | 2 |
@@ -31,12 +31,12 @@ SuiOutKit supports **40+ fiat currencies** with locale-aware formatting, IP-base
 | PLN | Polish Zloty | zł | 2 |
 | TRY | Turkish Lira | ₺ | 2 |
 | ARS | Argentine Peso | AR$ | 2 |
-| CLP | Chilean Peso | CL$ | 0 |
+| CLP | Chilean Peso | CL$ | 2 |
 | PHP | Philippine Peso | ₱ | 2 |
 | THB | Thai Baht | ฿ | 2 |
-| IDR | Indonesian Rupiah | Rp | 0 |
+| IDR | Indonesian Rupiah | Rp | 2 |
 | MYR | Malaysian Ringgit | RM | 2 |
-| VND | Vietnamese Dong | ₫ | 0 |
+| VND | Vietnamese Dong | ₫ | 2 |
 | PKR | Pakistani Rupee | Rs | 2 |
 | BDT | Bangladeshi Taka | ৳ | 2 |
 | EGP | Egyptian Pound | E£ | 2 |
@@ -45,7 +45,7 @@ SuiOutKit supports **40+ fiat currencies** with locale-aware formatting, IP-base
 | SAR | Saudi Riyal | SAR | 2 |
 | CNY | Chinese Yuan | ¥ | 2 |
 | TWD | New Taiwan Dollar | NT$ | 2 |
-| KRW | South Korean Won | ₩ | 0 |
+| KRW | South Korean Won | ₩ | 2 |
 | UAH | Ukrainian Hryvnia | ₴ | 2 |
 | LKR | Sri Lankan Rupee | Rs | 2 |
 | MMK | Myanmar Kyat | K | 2 |
@@ -113,6 +113,57 @@ formatCurrency(1400, "JPY");   // "¥1,400"
 ```
 
 `formatCurrency` uses `Intl.NumberFormat` for locale-aware number separators and prepends the currency symbol. The deprecated `formatNgn` still works but redirects to `formatCurrency`.
+
+## Settlement tokens
+
+Each checkout can specify which settlement token the merchant receives. Tokens are configured on the backend via `SUPPORTED_COINS` and can be overridden per checkout via `settlementToken`.
+
+### Per-checkout override
+
+```ts
+const session = await sdk.initCheckout({
+  amount: 29.99,
+  currency: "USD",
+  settlementToken: "USDC",       // single token
+});
+
+// or choose from multiple options
+const session = await sdk.initCheckout({
+  amount: 1500,
+  currency: "NGN",
+  settlementToken: ["SUI", "USDC"],  // customer picks
+});
+```
+
+The backend resolves the symbol to the full coin type from its config. When `settlementToken` is omitted, the backend uses `DEFAULT_COIN`.
+
+### Per-currency defaults
+
+Merchants can set default settlement tokens per currency by passing them in `initCheckout`. For example, USD/EUR/GBP merchants may prefer USDC, while NGN merchants may accept SUI or USDC:
+
+```ts
+// USD merchant — always settles in USDC
+const session = await sdk.initCheckout({
+  amount: 50,
+  currency: "USD",
+  settlementToken: "USDC",
+});
+
+// NGN merchant — offers SUI or USDC
+const session = await sdk.initCheckout({
+  amount: 5000,
+  currency: "NGN",
+  settlementToken: ["SUI", "USDC"],
+});
+```
+
+### Backend coin categories
+
+Each settlement coin has a `category` field: `native` (SUI), `stablecoin` (USDC, USDT, USDSui, eSUID), `utility` (WAL, DEEP, SuiNS), or `defi` (CETUS). The session response includes `category` on each entry in `supportedCoins`.
+
+### CoinGecko IDs
+
+CoinGecko prices power the FX rate for each settlement token. The backend maps each coin's `coingeckoId` to its CoinGecko slug. If a CoinGecko ID is wrong, the API returns empty prices and the FX service falls back to USD conversion or hardcoded defaults. See the [Environment](/docs/guides/environment) page for the full list of supported CoinGecko IDs.
 
 ## Operator configuration
 

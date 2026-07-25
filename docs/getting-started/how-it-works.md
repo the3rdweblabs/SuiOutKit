@@ -19,6 +19,7 @@ You call `initCheckout` with amount, currency (40+ fiat currencies supported), a
 
 - **Bank transfer** - virtual account details in the modal  
 - **OPay** - push to their phone  
+- **USSD** - dial a bank code to complete payment (NGN only)  
 - **Card** - Stripe in the modal  
 - **Sui wallet / outPay** - crypto in the same UI  
 

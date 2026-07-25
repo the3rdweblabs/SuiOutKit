@@ -23,7 +23,8 @@ export function PayButton() {
     const session = await sdk.initCheckout({
       amount: 29.99,
       currency: "USD",
-      coinType: "0x2::sui::SUI",  // optional
+      coinType: "0x2::sui::SUI",           // optional: override settlement coin
+      settlementToken: "USDC",              // optional: single token or ["SUI","USDC"]
       metadata: { orderId: "ORDER-123" },
     });
     sdk.openModal(session);

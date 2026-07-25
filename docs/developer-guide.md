@@ -32,6 +32,7 @@ const session = await sdk.initCheckout({
   amount: 29.99,
   currency: "USD",
   coinType: "0x2::sui::SUI", // optional: override settlement coin
+  settlementToken: "USDC",   // optional: single token or ["SUI","USDC"]
   metadata: { orderId: "ORDER-123" }
 });
 ```
@@ -107,9 +108,12 @@ Request body:
   "currency": "USD",
   "merchantAddress": "0x...",
   "coinType": "0x2::sui::SUI",
+  "settlementToken": "USDC",
   "metadata": {}
 }
 ```
+
+`settlementToken` accepts a string or array. The backend resolves the symbol to the full coin type and returns `supportedCoins` with `category` per entry.
 
 ### `POST /v1/checkout/charge`
 Starts a payment provider flow.
@@ -163,6 +167,8 @@ The backend uses the following variables from [`backend/.env`](/backend/.env):
 - `TREASURY_ID`
 - `TREASURY_ADMIN_CAP_ID` - optional TreasuryAdminCap override
 - `SUPPORTED_COINS` - JSON map of settlement coins (primary config, replaces `SETTLEMENT_TOKEN_TYPE`)
+- `SUPPORTED_COINS_TESTNET` - Network-specific override loaded when `SUI_NETWORK=testnet`. Falls back to `SUPPORTED_COINS`.
+- `SUPPORTED_COINS_MAINNET` - Network-specific override loaded when `SUI_NETWORK=mainnet`. Falls back to `SUPPORTED_COINS`.
 - `DEFAULT_COIN` - default settlement coin symbol (default `SUI`)
 - `SETTLEMENT_TOKEN_TYPE` - legacy fallback when `SUPPORTED_COINS` is not set
 - `FIAT_REGISTRY_ID`
@@ -188,6 +194,24 @@ A payment confirmation is only allowed if the backend can validate two things:
 2. The treasury holds enough of the settlement token to cover the payment amount.
 
 The backend fetches a fresh rate at charge time so the amount used for settlement is the current value, not a stale cached estimate.
+
+### Treasury CLI
+
+The `treasury.ts` script provides commands for managing the on-chain treasury:
+
+```bash
+cd backend
+npm run treasury:balance          # check treasury balance on-chain
+npm run treasury:wallet           # check operator wallet balances (all coins)
+npm run treasury:deposit <AMOUNT> <TOKEN>          # deposit tokens into treasury (auto-merges fragmented coins)
+npm run treasury:withdraw <AMOUNT> <TOKEN>         # withdraw tokens from treasury
+```
+
+The `wallet` command uses `getBalance()` to show accurate total balances across all coin types. The `deposit` command auto-merges fragmented coin objects when a single coin has insufficient balance.
+
+### Coin categories
+
+Each settlement coin has a `category` field: `native` (SUI), `stablecoin` (USDC, USDT, USDSui, eSUID), `utility` (WAL, DEEP, SuiNS), or `defi` (CETUS). The backend uses this for display and filtering.
 
 ## On-Chain Flow
 The Move contract provides two settlement paths:

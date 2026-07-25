@@ -68,6 +68,19 @@ After OPay authorization, Flutterwave redirects the user's browser to this route
 
 Configure Flutterwave and Stripe dashboards to these URLs on the **production** host.
 
+## Payment methods
+
+| Method | Provider | Notes |
+|--------|----------|-------|
+| `bank_transfer` | Flutterwave | Virtual account details in modal |
+| `opay` | Flutterwave | Requires `phoneNumber` at charge time |
+| `ussd` | Flutterwave | USSD bank code; customer dials to complete payment |
+| `stripe` | Stripe | Card element in modal |
+| `sui_wallet` | Sui + Payment Kit | Wallet connect |
+| `outpay` | Payment Kit QR | QR-based outPay flow |
+
+NGN customers see all fiat methods; non-NGN customers see card and crypto only. Cross-region payments are supported - a USD-settled merchant can accept NGN from a Nigerian customer via Flutterwave/provider's local rails.
+
 ## Merchant integration (no codebase required)
 
 ```bash

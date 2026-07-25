@@ -21,11 +21,18 @@ Create a checkout session.
   "currency": "USD",
   "merchantAddress": "0x...",
   "coinType": "0x2::sui::SUI",
+  "settlementToken": "USDC",
   "metadata": {}
 }
 ```
 
-Returns session with `token`, `nonce`, `estimatedRate`, `coinType`, `supportedCoins`, `resolvedCurrency`, `currencySymbol`, `status`.
+`settlementToken` accepts a string (`"DEEP"`) or array (`["SUI","USDC"]`). When omitted, the backend uses `DEFAULT_COIN`.
+
+Returns session with `token`, `nonce`, `estimatedRate`, `coinType`, `supportedCoins` (includes `category` per entry), `settlementToken` (normalized to `string[]`), `resolvedCurrency`, `currencySymbol`, `status`.
+
+### Cross-region payments
+
+When a customer's currency differs from the merchant's settlement currency, the backend supports cross-region payments. For example, a USD-settled merchant can accept NGN from a Nigerian customer - the customer is charged in NGN, and settlement uses the merchant's USD amount. The modal shows a "Pay in {local currency}" label to indicate the local payment rail.
 
 ## Charge
 
@@ -41,9 +48,9 @@ Start a payment flow. Body:
 }
 ```
 
-Methods: `bank_transfer` | `opay` | `stripe`
+Methods: `bank_transfer` | `opay` | `ussd` | `stripe`
 
-Returns a provider-specific payload: virtual account details and validated FX rate for `bank_transfer`, an `opayAuthorizationUrl` redirect for `opay`, or a Stripe `clientSecret` and public key for `stripe`.
+Returns a provider-specific payload: virtual account details and validated FX rate for `bank_transfer`, an `opayAuthorizationUrl` redirect for `opay`, USSD bank code and instructions for `ussd`, or a Stripe `clientSecret` and public key for `stripe`.
 
 Common response codes for this endpoint:
 

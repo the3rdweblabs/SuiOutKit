@@ -80,7 +80,9 @@ Notes:
 | `CRYPTO_REGISTRY_ID` | Registry (crypto flows) |
 | `CRYPTO_REGISTRY_NAME` | Registry name string |
 | `CRYPTO_REGISTRY_ADMIN_CAP_ID` | Crypto admin cap |
-| `SUPPORTED_COINS` | JSON map of settlement coins. Format: `{"SYMBOL":{"type":"<full_coin_type>","coingeckoId":"<coingecko_id>","decimals":<int>}}`. Example: `{"SUI":{"type":"0x2::sui::SUI","coingeckoId":"sui","decimals":9},"USDC":{"type":"0x...::usdc::USDC","coingeckoId":"usd-coin","decimals":6}}` |
+| `SUPPORTED_COINS` | JSON map of settlement coins. Format: `{"SYMBOL":{"type":"<full_coin_type>","coingeckoId":"<coingecko_id>","decimals":<int>,"category":"<cat>"}}`. Categories: `native`, `stablecoin`, `utility`, `defi`. Example: `{"SUI":{"type":"0x2::sui::SUI","coingeckoId":"sui","decimals":9,"category":"native"},"USDC":{"type":"0x...::usdc::USDC","coingeckoId":"usd-coin","decimals":6,"category":"stablecoin"}}` |
+| `SUPPORTED_COINS_TESTNET` | Network-specific override — loaded when `SUI_NETWORK=testnet`. Falls back to `SUPPORTED_COINS` if not set. |
+| `SUPPORTED_COINS_MAINNET` | Network-specific override — loaded when `SUI_NETWORK=mainnet`. Falls back to `SUPPORTED_COINS` if not set. |
 | `DEFAULT_COIN` | Symbol of the default settlement coin (default `SUI`) |
 | `SETTLEMENT_TOKEN_TYPE` | Legacy - fallback when `SUPPORTED_COINS` is not set. Use `SUPPORTED_COINS` instead. |
 | `SUI_OPERATOR_PRIVATE_KEY` | Signs settlement PTBs |
@@ -119,6 +121,7 @@ Notes:
 | Issue | Check |
 |-------|--------|
 | Treasury abort code 4 | Fund treasury for the settlement coin type (see `SUPPORTED_COINS`) |
+| Wrong CoinGecko IDs | Verify `coingeckoId` values match CoinGecko slugs (e.g. WAL→`walrus-2`, CETUS→`cetus-protocol`, SuiNS→`suins-token`). Wrong IDs cause empty prices and fallback to SUI default rate. |
 | FX falls back to defaults | CoinGecko unreachable; check `COINGECKO_API_MODE` and API keys |
 | Walrus upload fails | Try upload relay or publisher mode |
 

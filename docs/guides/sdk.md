@@ -32,15 +32,18 @@ const session = await sdk.initCheckout({
   amount: 29.99,
   currency: "USD",
   coinType?: "0x2::sui::SUI",   // optional: override settlement coin
+  settlementToken?: "USDC",      // optional: single token or ["SUI","USDC"]
   metadata?: { orderId: "ORDER-123" },
 });
 ```
 
-Returns `CheckoutSession` with `token`, `nonce`, `coinType`, `supportedCoins`, `estimatedRate`, `resolvedCurrency`, `currencySymbol`, etc.
+Returns `CheckoutSession` with `token`, `nonce`, `coinType`, `supportedCoins` (each entry includes `symbol`, `type`, `decimals`, `category`), `settlementToken` (normalized to `string[]`), `estimatedRate`, `resolvedCurrency`, `currencySymbol`, etc.
 
 ### `openModal(session, options?)`
 
-Opens the built-in modal (bank transfer, OPay, Stripe, Sui wallet, outPay). Loads styles from `{backendUrl}/style.css`.
+Opens the built-in modal (bank transfer, OPay, USSD, Stripe, Sui wallet, outPay). Loads styles from `{backendUrl}/style.css`.
+
+Payment methods shown in the modal depend on the customer's currency: NGN customers see all methods (bank transfer, OPay, USSD, card, crypto); non-NGN customers see card and crypto. Cross-region NGN customers see a "Pay in NGN →" label for local payment rails.
 
 ```ts
 const modal = sdk.openModal(session, {
@@ -69,6 +72,7 @@ sdk.wrapButton("#pay-btn", {
   amount: 29.99,
   currency: "USD",
   coinType: "0x2::sui::SUI",   // optional
+  settlementToken: "USDC",     // optional
 });
 ```
 
