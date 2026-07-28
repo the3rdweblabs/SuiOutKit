@@ -47,4 +47,6 @@ demo-output/
 test-results/
 
 .agents/
+agent/
+.claude/
 skills-lock.json

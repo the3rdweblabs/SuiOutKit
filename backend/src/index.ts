@@ -14,6 +14,7 @@ import suiService from "./services/sui.js";
 import paymentsRouter from "./routes/payments.js";
 import redisService from "./services/redis.js";
 import walrusService from "./services/walrus.js";
+import walrusQueueService from "./services/walrus-queue.js";
 import logger from "./utils/logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -126,23 +127,21 @@ suiService.startIndexer(async (event) => {
     logger.info("INDEXER", `Auto-settling crypto payment for nonce ${nonce}`);
 
     let walrusBlobId = session.cryptoWalrusBlobId || session.walrusBlobId;
-    let walrusAlreadyStored = !!walrusBlobId;
+    let signedPayload = session.cryptoWalrusSignedPayload;
 
     if (!walrusBlobId && session.cryptoWalrusInvoice) {
-      // Resolve blob ID (prepare in SDK mode, upload in publisher mode)
       const resolved = await walrusService.resolveBlobId(session.cryptoWalrusInvoice);
       walrusBlobId = resolved.blobId;
-      walrusAlreadyStored = resolved.alreadyStored;
+      signedPayload = resolved.signedPayload;
+      await redisService.updateSessionStatus(nonce, "PENDING", {
+        cryptoWalrusBlobId: walrusBlobId,
+        cryptoWalrusSignedPayload: signedPayload,
+      });
     }
 
-    // On-chain event confirmed — commit Walrus blob if only prepared (SDK mode)
-    if (!walrusAlreadyStored && walrusBlobId && session.cryptoWalrusInvoice) {
-      try {
-        await walrusService.uploadInvoice(session.cryptoWalrusInvoice);
-        logger.success("INDEXER", `Walrus receipt committed after on-chain event: ${walrusBlobId}`);
-      } catch (walrusErr: any) {
-        logger.error("INDEXER", `Walrus post-event commit failed for ${nonce}: ${walrusErr.message}`);
-      }
+    // On-chain event confirmed - enqueue Walrus upload (background worker handles it)
+    if (walrusBlobId && signedPayload) {
+      walrusQueueService.enqueueUpload(nonce, signedPayload);
     }
 
     await redisService.updateSessionStatus(nonce, "SETTLED", {
@@ -167,11 +166,15 @@ const server = app.listen(PORT, () => {
   console.log(`------------------------------------------------------------------`);
   console.log(`SUI_NETWORK: ${SUI_NETWORK} | FLW_MODE: ${FLW_MODE} | STRIPE_MODE: ${STRIPE_MODE}`);
   console.log(`==================================================================`);
+
+  // Start the Walrus upload queue worker
+  walrusQueueService.startWorker();
 });
 
 // Graceful shutdown
 async function shutdown(signal: string) {
   console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+  walrusQueueService.stopWorker();
   server.close(() => {
     console.log("HTTP server closed.");
   });

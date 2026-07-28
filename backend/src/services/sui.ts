@@ -204,7 +204,7 @@ class SuiIntegrationService {
     tokenType: string
   ): Promise<{ verified: boolean; eventType?: string }> {
     try {
-      const txBlock = await (this.client as any).getTransaction({
+      const txBlock = await (this.client as any).waitForTransaction({
         digest: txDigest,
         include: { events: true },
       });
@@ -310,7 +310,7 @@ class SuiIntegrationService {
     }
 
     try {
-      const txBlock = await (this.client as any).getTransaction({
+      const txBlock = await (this.client as any).waitForTransaction({
         digest: txDigest,
         include: { events: true },
       });
