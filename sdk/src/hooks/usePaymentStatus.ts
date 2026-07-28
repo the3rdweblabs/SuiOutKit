@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { joinApiPath } from "../config/api.js";
 
 type PaymentUpdate = {
-  status?: "PENDING" | "PROCESSING" | "BANK_CONFIRMED" | "SETTLED" | "ERROR";
+  status?: "PENDING" | "PROCESSING" | "SETTLED" | "ERROR";
   walrusBlobId?: string;
   txDigest?: string;
   error?: string;

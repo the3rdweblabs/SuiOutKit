@@ -320,8 +320,12 @@ export class SuiOutKitModal {
       const data = event.data;
       if (data && data.type === "suioutkit_opay_complete") {
         this.removeOPayMessageListener();
-        this.stopPolling();
-        // Polling will pick up the SETTLED status and render success
+        const panel = this.overlay?.querySelector("#sok-content-panel .suioutkit-panel");
+        if (panel) {
+          const texts = panel.querySelectorAll(".sok-status-text");
+          if (texts[0]) texts[0].textContent = "Payment received.";
+          if (texts[1]) texts[1].textContent = "Settling on-chain...";
+        }
       }
     };
     window.addEventListener("message", this.opayMessageHandler);
@@ -1271,6 +1275,19 @@ export class SuiOutKitModal {
 
         if (result.status === "SETTLED" && result.txDigest && result.walrusBlobId) {
           this.renderSuccessPanel(result.txDigest, result.walrusBlobId);
+          return;
+        }
+
+        const panel = this.overlay?.querySelector("#sok-content-panel .suioutkit-panel");
+        if (!panel) return;
+
+        const isWaitingText = panel.innerHTML.includes("Waiting for OPay approval");
+        if (!isWaitingText) return;
+
+        const texts = panel.querySelectorAll(".sok-status-text");
+        if (result.status !== "PENDING" && result.status !== "EXPIRED") {
+          if (texts[0]) texts[0].textContent = "Payment received.";
+          if (texts[1]) texts[1].textContent = "Settling on-chain...";
         }
       } catch (err) {
         // Soft fail on polling connectivity issues, keep retrying

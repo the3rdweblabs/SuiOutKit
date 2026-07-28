@@ -16,38 +16,30 @@ export default function PaymentStatusUI({ backendUrl, nonce }: Props) {
 
   const isProcessing = update.status === "PROCESSING";
   const isSettled = update.status === "SETTLED";
-  const hasReceipt = !!update.walrusBlobId || isSettled;
 
   const steps = [
-    { label: "Transfer sent", completed: isProcessing || hasReceipt },
-    { label: "Webhook received", completed: isProcessing || hasReceipt },
-    { label: "Receipt minted", completed: hasReceipt },
+    { label: "Payment received", completed: isProcessing || isSettled },
+    { label: "Webhook confirmed", completed: isProcessing || isSettled },
     { label: "Settled on-chain", completed: isSettled },
+    { label: "Receipt uploaded", completed: isSettled },
   ];
 
-  // Determine badge status
-  let badgeStatus: "PENDING" | "PROCESSING" | "BANK_CONFIRMED" | "SETTLED" | "ERROR" = "PENDING";
+  let badgeStatus: "PENDING" | "PROCESSING" | "SETTLED" | "ERROR" = "PENDING";
   if (update.error) {
     badgeStatus = "ERROR";
-  } else if (update.status === "SETTLED") {
+  } else if (isSettled) {
     badgeStatus = "SETTLED";
-  } else if (update.status === "PROCESSING") {
+  } else if (isProcessing) {
     badgeStatus = "PROCESSING";
-  } else if (update.walrusBlobId) {
-    badgeStatus = "BANK_CONFIRMED";
-  } else {
-    badgeStatus = "PENDING";
   }
 
   const copy = update.error
     ? "Payment monitoring lost connection."
     : isSettled
-      ? "Payment settled. Receipt has been generated and the on-chain transaction is complete."
+      ? "Payment settled on-chain. Receipt has been uploaded to Walrus."
       : isProcessing
-        ? "Bank transfer received. Webhook confirmed the payment and settlement is in progress..."
-        : hasReceipt
-          ? "Receipt minted. Final settlement is being confirmed on-chain..."
-          : "Waiting for the bank transfer to arrive. Once received, the progress steps will advance automatically.";
+        ? "Bank transfer received. Confirming on-chain settlement..."
+        : "Waiting for the bank transfer to arrive.";
 
   return (
     <div className="payment-status-ui" style={{ marginTop: "12px" }}>

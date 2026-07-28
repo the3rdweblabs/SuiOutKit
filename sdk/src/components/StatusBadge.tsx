@@ -7,11 +7,11 @@ import { Loader2, CheckCircle, XCircle } from "lucide-react";
 import "./style.css";
 
 type Props = {
-  status: "PENDING" | "PROCESSING" | "SUCCESS" | "ERROR" | "BANK_CONFIRMED" | "SETTLED";
+  status: "PENDING" | "PROCESSING" | "SUCCESS" | "ERROR" | "SETTLED";
 };
 
 export function StatusBadge({ status }: Props) {
-  if (status === "SUCCESS" || status === "BANK_CONFIRMED" || status === "SETTLED") {
+  if (status === "SUCCESS" || status === "SETTLED") {
     return <CheckCircle className="icon success" />;
   }
   if (status === "ERROR") {
