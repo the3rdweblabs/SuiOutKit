@@ -29,6 +29,7 @@ const SUI_NETWORK = getEnv("SUI_NETWORK", "testnet") as any;
 const PACKAGE_ID = getEnv(`PACKAGE_ID_${SUI_NETWORK}`);
 const CRYPTO_REGISTRY_ID = getEnv(`CRYPTO_REGISTRY_ID_${SUI_NETWORK}`);
 const CRYPTO_REGISTRY_NAME = getEnv("CRYPTO_REGISTRY_NAME", "suioutkit-crypto-settlements");
+const STRIPE_MODE = getEnv("STRIPE_MODE", "test");
 
 function normalizeMerchantAddress(address: string) {
   if (!isValidSuiAddress(address)) {
@@ -371,7 +372,7 @@ router.post("/charge", async (req: Request, res: Response) => {
         clientSecret
       });
 
-      const stripePublicKey = process.env.STRIPE_PUBLIC_KEY || "pk_test_TYooMQauvdEDq54NiTphI7jx";
+      const stripePublicKey = getEnv(`STRIPE_PUBLIC_KEY_${STRIPE_MODE}`) || getEnv("STRIPE_PUBLIC_KEY") || "pk_test_TYooMQauvdEDq54NiTphI7jx";
 
       logger.info("CHECKOUT", `Created Stripe PaymentIntent for session ${session.nonce} | Rate: ${currencySymbol}${currentRate}`);
       return res.json({ status: "success", clientSecret, stripePublicKey, validatedRate: currentRate });
