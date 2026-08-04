@@ -2,6 +2,12 @@
 SuiOutKit
 </h1>
 
+<div align="center">
+<img src="docs/assets/suioutkit.png" alt="suioutkit">
+</div>
+
+---
+
 Universal payment gateway for merchants: accept **fiat** (bank transfer, OPay, cards) and **crypto** (Sui wallet, outPay). Funds are settled on Sui and paired with on‑chain receipts and Walrus-stored invoice metadata.
 | Layer | Path | Role |
 |-------|------|------|
