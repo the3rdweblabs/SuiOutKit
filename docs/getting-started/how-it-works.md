@@ -12,7 +12,7 @@ You call the SDK; SuiOutKit handles providers, sessions, and on-chain payout.
 ## Typical flow
 ### 1. Create session
 
-You call `initCheckout` with amount, currency (40+ fiat currencies supported), and optional metadata. The SDK returns a session your UI can pass to the modal.
+You call `initCheckout` with amount, currency (40 fiat currencies supported), and optional metadata. The SDK returns a session your UI can pass to the modal.
 
 ### 2. Customer pays
 `openModal` (or `wrapButton`) lets the customer choose:

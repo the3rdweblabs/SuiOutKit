@@ -8,30 +8,33 @@ USSD (Unstructured Supplementary Service Data) lets customers pay by dialing a b
 ## How it works
 
 1. Customer selects USSD in the checkout modal.
-2. Modal displays a bank selection and the USSD code to dial.
-3. Customer dials the code on their phone (e.g. `*329*...#`).
-4. Customer follows the bank's prompts to authorize the payment.
-5. Flutterwave confirms the payment via webhook.
-6. Backend settles and shows success.
+2. Modal displays a bank selection grid.
+3. Customer selects their bank.
+4. The backend charges Flutterwave, which returns the USSD code to dial (e.g. `*329*...#`).
+5. Customer dials the code on their phone and follows the bank's prompts.
+6. Flutterwave confirms the payment via webhook (or background tx_ref polling).
+7. Backend settles and shows success.
 
 The entire flow happens on the customer's phone - no app installation required.
 
 ## Supported banks
 
-| Bank | USSD Code | Icon |
-|------|-----------|------|
-| Access Bank | `*901#` | `access.png` |
-| FCMB | `*389*214#` | `fcmb.png` |
-| First Bank | `*894#` | `firstbank.png` |
-| GTBank | `*737#` | `gtb.png` |
-| Sterling Bank | `*822#` | `sterling.png` |
-| UBA | `*919#` | `uba.png` |
-| Union Bank | `*826#` | `union.png` |
-| VFD Bank | `*5037#` | `vfd.png` |
-| Wema Bank | `*945#` | `wema.png` |
-| Zenith Bank | `*966#` | `zenith.png` |
+The modal's bank grid uses Flutterwave bank codes. Each bank also has a USSD shortcode (the `*xxx#` code customers normally dial for USSD banking) shown for reference:
 
-Bank icons are served from `sdk/assets/banks/` and displayed in the modal.
+| Bank | Flutterwave Code | USSD Code | Icon |
+|------|------------------|-----------|------|
+| Access Bank | `044` | `*901#` | `access.png` |
+| FCMB | `214` | `*329#` | `fcmb.png` |
+| First Bank | `011` | `*894#` | `firstbank.png` |
+| GTBank | `058` | `*737#` | `gtb.png` |
+| Sterling Bank | `232` | `*822#` | `sterling.png` |
+| UBA | `033` | `*919#` | `uba.png` |
+| Union Bank | `032` | `*826#` | `union.png` |
+| VFD MFB | `090110` | `*5037#` | `vfd.png` |
+| Wema Bank | `035` | `*945#` | `wema.png` |
+| Zenith Bank | `057` | `*966#` | `zenith.png` |
+
+The bank icons are served from the API host (`GET /assets/banks/<icon>.png`), which is mounted from the backend's static assets directory. The exact USSD code to dial is returned by Flutterwave at charge time and may differ from the shortcode above (e.g. `*329*10*08#`).
 
 ## Operator requirements
 
@@ -45,15 +48,16 @@ Merchants integrating via `npm install suioutkit` do not need to configure anyth
 
 ### 1. Bank selection
 
-The modal displays available banks with their USSD codes. The customer selects their bank.
+The modal displays available banks. The customer selects their bank.
 
 ### 2. USSD code display
 
-After selecting a bank, the modal shows:
+After selecting a bank, the backend charges Flutterwave and the modal shows:
 
-- The full USSD code to dial
+- The full USSD code to dial (returned by Flutterwave)
 - Instructions to dial the code and follow the prompts
 - The amount to authorize
+- An optional payment code to enter if prompted
 
 ### 3. Phone authorization
 

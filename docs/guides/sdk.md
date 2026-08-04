@@ -17,6 +17,7 @@ The SDK defaults to `mode: "live"` (hosted API at `https://api.suioutkit.xyz`, m
 ```ts
 const sdk = new SuiOutKit({
   merchantAddress: "0x...",                     // required
+  // settlementToken: "USDC",                   // optional: single token or ["SUI","USDC"]
   // mode: "local",                             // localhost:5000, testnet
   // mode: "test",                              // staging, testnet
   // mode: "live",                              // production, mainnet (default)
@@ -32,18 +33,18 @@ const session = await sdk.initCheckout({
   amount: 29.99,
   currency: "USD",
   coinType?: "0x2::sui::SUI",   // optional: override settlement coin
-  settlementToken?: "USDC",      // optional: single token or ["SUI","USDC"]
+  settlementToken?: string | string[],  // optional: single token or ["SUI","USDC"]
   metadata?: { orderId: "ORDER-123" },
 });
 ```
 
-Returns `CheckoutSession` with `token`, `nonce`, `coinType`, `supportedCoins` (each entry includes `symbol`, `type`, `decimals`, `category`), `settlementToken` (normalized to `string[]`), `estimatedRate`, `resolvedCurrency`, `currencySymbol`, etc.
+Returns `CheckoutSession` with `token`, `nonce`, `coinType`, `supportedCoins` (each entry includes `symbol`, `type`, `decimals`), `settlementToken` (a `string` or `string[]`), `estimatedRate`, `resolvedCurrency`, `currencySymbol`, etc.
 
 ### `openModal(session, options?)`
 
 Opens the built-in modal (bank transfer, OPay, USSD, Stripe, Sui wallet, outPay). Loads styles from `{backendUrl}/style.css`.
 
-Payment methods shown in the modal depend on the customer's currency: NGN customers see all methods (bank transfer, OPay, USSD, card, crypto); non-NGN customers see card and crypto. Cross-region NGN customers see a "Pay in NGN →" label for local payment rails.
+Payment methods shown in the modal depend on the customer's currency: NGN customers see bank transfer, OPay, USSD, card, and crypto; GHS customers see bank transfer, card, and crypto; other customers see card and crypto. Cross-region NGN customers see a "Pay in NGN →" label for local payment rails.
 
 ```ts
 const modal = sdk.openModal(session, {
@@ -72,9 +73,11 @@ sdk.wrapButton("#pay-btn", {
   amount: 29.99,
   currency: "USD",
   coinType: "0x2::sui::SUI",   // optional
-  settlementToken: "USDC",     // optional
+  metadata: { orderId: "ORDER-123" },   // optional
 });
 ```
+
+`wrapButton` accepts `amount`, `currency`, `coinType`, and `metadata` - pass `settlementToken` to `initCheckout` or the `SuiOutKit` config instead.
 
 ### `confirmCryptoPayment(nonce, txDigest, method?)`
 

@@ -58,7 +58,7 @@ sdk.wrapButton("#pay-btn", {
 
 ## What happens
 
-1. You call `initCheckout` - the SDK creates a session (40+ fiat currencies supported).
+1. You call `initCheckout` - the SDK creates a session (40 fiat currencies supported).
 2. The customer pays in the modal (bank, OPay, card, wallet, or outPay QR).
 3. SuiOutKit completes settlement on Sui; the modal polls until done.
 

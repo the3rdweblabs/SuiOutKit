@@ -134,7 +134,7 @@ SUPPORTED_COINS_MAINNET='{"SUI":{...},"USDC":{...},"NEWTOKEN":{"type":"0x...::mo
 
 ```bash
 cd backend
-npm run treasury -- deposit
+npm run treasury:deposit <AMOUNT> <NEWTOKEN>
 ```
 
 5. **Test** by creating a session with `settlementToken: "NEWTOKEN"` and verifying the `estimatedRate` is correct.

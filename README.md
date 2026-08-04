@@ -23,7 +23,7 @@ Universal payment gateway for merchants: accept **fiat** (bank transfer, OPay, c
 
 ![SOK flow diagram](/docs/assets/sok-how_it_works_flow.svg)
 
-Flow in short: merchant calls the SDK to create a session; the backend orchestrates the charge with a provider, records state in Redis, uploads receipts to Walrus, and finally executes an on-chain settlement PTB which mints a receipt and transfers funds to the merchant.
+Flow in short: merchant calls the SDK to create a session; the backend orchestrates the charge with a provider and records state in Redis; once payment is confirmed it executes an on-chain settlement PTB (minting a receipt and transferring funds to the merchant); after the PTB confirms, the backend enqueues the invoice to a Redis-backed Walrus upload queue, where a background worker stores the receipt blob without blocking the checkout response.
 
 ## Helpers & key files
 
@@ -45,7 +45,8 @@ Quick links to common helpers and implementation entry points used by integrator
        - [backend/src/services/fx.ts](backend/src/services/fx.ts) - CoinGecko FX rates with USD fallback
        - [backend/src/services/geo.ts](backend/src/services/geo.ts) - IP geolocation for currency auto-detection
        - [backend/src/services/sui.ts](backend/src/services/sui.ts) - on-chain interaction and settlement helpers
-       - [backend/src/services/walrus.ts](backend/src/services/walrus.ts) - invoice upload helper
+       - [backend/src/services/walrus.ts](backend/src/services/walrus.ts) - invoice preparation (encode-only) and upload helpers
+       - [backend/src/services/walrus-queue.ts](backend/src/services/walrus-queue.ts) - Redis-backed async upload queue with background worker
        - [backend/src/services/redis.ts](backend/src/services/redis.ts) - session store and locks
        - [backend/src/scripts/treasury.ts](backend/src/scripts/treasury.ts) - treasury CLI (balance, wallet, deposit, withdraw)
 - Contracts

@@ -47,14 +47,12 @@ Shows the operator wallet's total balance for each coin type. Uses `getBalance()
 npm run treasury:deposit <AMOUNT> <TOKEN>
 ```
 
-Deposits tokens from the operator wallet into the treasury. The command:
+Deposits tokens from the operator wallet into the treasury. The deposit amount is a required positional argument. The command:
 
 1. Queries the operator wallet for the configured coin type.
 2. If a single coin object has insufficient balance, auto-merges fragmented coins.
 3. Transfers the merged coin to the treasury.
 4. Reports the transaction digest.
-
-The deposit amount can be configured or prompted interactively.
 
 ### Withdraw tokens
 
@@ -94,10 +92,12 @@ The treasury CLI reads `SUPPORTED_COINS` to know which tokens to manage. When us
 
 ### SuiScan links
 
-The treasury CLI outputs suiscan links for each transaction:
+The CLI prints a SuiScan link for the operator account (`npm run treasury:wallet`) and for the treasury object (`npm run treasury:balance`):
 
-- Testnet: `https://suiscan.xyz/testnet/tx/<digest>`
-- Mainnet: `https://suiscan.xyz/mainnet/tx/<digest>`
+- Testnet: `https://suiscan.xyz/testnet/account/<address>` / `https://suiscan.xyz/testnet/object/<treasuryId>`
+- Mainnet: `https://suiscan.xyz/mainnet/account/<address>` / `https://suiscan.xyz/mainnet/object/<treasuryId>`
+
+Deposit and withdraw commands print only the transaction digest - no link.
 
 ### Balance alerts
 
@@ -123,10 +123,13 @@ Ensure the operator wallet has sufficient SUI for gas fees on settlement PTBs.
 
 | Variable | Description |
 |----------|-------------|
-| `SUI_OPERATOR_PRIVATE_KEY` | Signs all treasury and settlement transactions |
+| `SUI_OPERATOR_PRIVATE_KEY` | Signs all treasury and settlement transactions (required) |
+| `PACKAGE_ID_<NETWORK>` | Published suioutkit Move package (required - e.g. `PACKAGE_ID_testnet`) |
 | `SUPPORTED_COINS_<NETWORK>` | JSON map of coins the treasury manages |
 | `DEFAULT_COIN` | Default coin for deposits when not specified |
-| `TREASURY_ID_<NETWORK>` | On-chain treasury object ID |
+| `TREASURY_ID_<NETWORK>` | On-chain treasury object ID (required) |
+| `TREASURY_ADMIN_CAP_ID_<NETWORK>` | Optional - skips the wallet scan for the admin cap (e.g. `TREASURY_ADMIN_CAP_ID_testnet`) |
+| `SUI_GRPC_ENDPOINT_<NETWORK>` | gRPC endpoint used for on-chain queries |
 | `SUI_NETWORK` | `testnet` or `mainnet` - determines which treasury and coins to use |
 
 ## Common issues

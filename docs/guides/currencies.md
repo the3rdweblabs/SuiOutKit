@@ -3,7 +3,7 @@ title: Currencies
 description: Supported fiat currencies, formatting, geo detection, and CoinGecko FX configuration.
 ---
 
-SuiOutKit supports **40+ fiat currencies** with locale-aware formatting, IP-based geolocation for automatic currency detection, and CoinGecko-powered FX rates.
+SuiOutKit supports **40 fiat currencies** with locale-aware formatting, IP-based geolocation for automatic currency detection, and CoinGecko-powered FX rates.
 
 ## Supported currencies
 
@@ -76,7 +76,7 @@ const session = await sdk.initCheckout({
 sdk.openModal(session);
 ```
 
-The modal automatically displays the correct symbol and formatting (e.g. `€29.99`, `R500.00`, `₦1,500`).
+The modal automatically displays the correct symbol and formatting (e.g. `€29.99`, `R500.00`, `₦1,500.00`).
 
 ### Button binding
 
@@ -108,11 +108,11 @@ import { formatCurrency } from "suioutkit";
 
 formatCurrency(29.99, "EUR");  // "€29.99"
 formatCurrency(500, "ZAR");    // "R500.00"
-formatCurrency(1500, "NGN");   // "₦1,500"
-formatCurrency(1400, "JPY");   // "¥1,400"
+formatCurrency(1500, "NGN");   // "₦1,500.00"
+formatCurrency(1400, "JPY");   // "¥1,400.00"
 ```
 
-`formatCurrency` uses `Intl.NumberFormat` for locale-aware number separators and prepends the currency symbol. The deprecated `formatNgn` still works but redirects to `formatCurrency`.
+`formatCurrency` uses `Intl.NumberFormat` for locale-aware number separators, always showing the currency's configured decimals (2 for all supported currencies), and prepends the currency symbol. The deprecated `formatNgn` still works but redirects to `formatCurrency`.
 
 ## Settlement tokens
 
@@ -175,7 +175,7 @@ Limit which fiat currencies are accepted:
 SUPPORTED_FIAT_CURRENCIES=NGN,USD,GBP,EUR,ZAR
 ```
 
-Leave empty to support all 40+ currencies (default).
+Leave empty to support all 40 currencies (default).
 
 ### Default currency
 

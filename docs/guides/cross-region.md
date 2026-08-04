@@ -24,9 +24,8 @@ Corridors depend on which payment providers the operator has configured and whic
 
 | Merchant currency | Customer currency | Local methods (provider-dependent) |
 |-------------------|-------------------|-----------------------------------|
-| USD | NGN | Bank transfer, mobile money, USSD |
-| USD | GHS | Bank transfer, mobile money |
-| USD | KES | Bank transfer, mobile money |
+| USD | NGN | Bank transfer, OPay, USSD |
+| USD | GHS | Bank transfer |
 | Any | Any | Card payments, Crypto (Sui wallet, outPay) |
 
 Card and crypto methods are always available regardless of currency mismatch. Cross-region only applies to provider-powered local methods.
@@ -47,7 +46,7 @@ No per-merchant configuration is needed. The merchant's `merchantAddress` receiv
 
 | Provider | Cross-region support | Configuration |
 |----------|---------------------|---------------|
-| Flutterwave | NGN, GHS, KES local collections | `FLW_SECRET_KEY_*` |
+| Flutterwave | NGN (bank transfer, OPay, USSD) and GHS (bank transfer) local collections | `FLW_SECRET_KEY_*` |
 | Stripe | Card payments (merchant's currency) | `STRIPE_SECRET_KEY_*` |
 | Other providers | Depends on provider capabilities | Provider-specific env vars |
 
@@ -102,18 +101,19 @@ The FX conversion between customer and merchant currencies happens at the paymen
 
 Availability depends on the operator's provider configuration:
 
-| Method | NGN customer | GHS customer | KES customer | Other |
-|--------|-------------|-------------|-------------|-------|
-| Bank transfer | ✅ (local bank) | ✅ (local bank) | ✅ (local bank) | ❌ |
-| Mobile money | ✅ | ✅ | ✅ | ❌ |
-| USSD | ✅ (NGN only) | ❌ | ❌ | ❌ |
-| Card | ✅ (merchant currency) | ✅ (merchant currency) | ✅ (merchant currency) | ✅ (merchant currency) |
-| Sui wallet | ✅ | ✅ | ✅ | ✅ |
-| outPay | ✅ | ✅ | ✅ | ✅ |
+| Method | NGN customer | GHS customer | Other |
+|--------|-------------|-------------|-------|
+| Bank transfer | ✅ (local bank) | ✅ (local bank) | ❌ |
+| OPay | ✅ (NGN only) | ❌ | ❌ |
+| USSD | ✅ (NGN only) | ❌ | ❌ |
+| Card | ✅ (merchant currency) | ✅ (merchant currency) | ✅ (merchant currency) |
+| Sui wallet | ✅ | ✅ | ✅ |
+| outPay | ✅ | ✅ | ✅ |
 
 ## Limitations
 
-- Cross-region only works with provider-powered local methods (bank transfer, mobile money, USSD).
+- Cross-region only works with provider-powered local methods (bank transfer, OPay, USSD).
+- Bank transfer is available for NGN and GHS customers only; OPay and USSD are NGN-only. Other customer currencies rely on card and crypto paths for now.
 - Card payments are always in the merchant's currency - no cross-region conversion.
 - The operator must have provider keys configured for the customer's region.
 - FX rates at the provider level may differ from CoinGecko rates used for settlement estimation.

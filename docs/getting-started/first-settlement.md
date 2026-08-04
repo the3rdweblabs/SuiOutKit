@@ -103,7 +103,7 @@ const session = await sdk.initCheckout({
 });
 ```
 
-40+ currencies supported. The modal formats amounts with the correct symbol and separators.
+40 currencies supported. The modal formats amounts with the correct symbol and separators.
 
 ## Choose a settlement token
 

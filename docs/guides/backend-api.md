@@ -80,17 +80,17 @@ Pre-flight FX and settlement amount preview.
 
 ### `POST /v1/checkout/crypto/intent`
 
-Body: `{ "token", "method?", "coinType?" }` - prepares wallet/outPay intent for the specified (or default) coin.
+Body: `{ "token", "method?", "coinType?" }` - prepares wallet/outPay intent for the specified (or default) coin. Also runs encode-only Walrus invoice preparation (~1s) and returns `walrusBlobId` in the response so the client can display the receipt ID up front.
 
 ### `POST /v1/checkout/crypto/confirm`
 
-Body: `{ "nonce", "txDigest", "method?" }` - verifies on-chain payment.
+Body: `{ "nonce", "txDigest", "method?" }` - verifies the on-chain payment (via `waitForTransaction`, which polls until the fullnode has indexed the digest). After verification it enqueues the Walrus receipt upload to the background queue rather than uploading inline.
 
 ## OPay Callback
 
 ### `GET /v1/checkout/opay/callback`
 
-Browser redirect target after OPay authorization completes. Flutterwave redirects the user back to this route with query parameters (`status`, `tx_ref`, `transaction_id`, etc.). The backend verifies the transaction, marks the checkout settled, and returns an HTML redirect page pointing the user back to the merchant's origin.
+Browser redirect target after OPay authorization completes. Flutterwave redirects the user back to this route with query parameters (`status`, `tx_ref`, `transaction_id`, etc.). The route renders an HTML page that posts a `suioutkit_opay_complete` message back to the opening window (via `window.opener.postMessage`) and auto-closes after 1.5s. It does not verify or settle the transaction itself - verification and settlement are handled by the background transaction polling started at charge time and the Flutterwave webhook.
 
 The callback URL is constructed from the `PUBLIC_URL` environment variable (e.g. `https://api.suioutkit.xyz/v1/checkout/opay/callback`). For local development, set `PUBLIC_URL=http://localhost:5000`.
 

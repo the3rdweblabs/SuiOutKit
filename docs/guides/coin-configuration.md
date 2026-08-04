@@ -139,7 +139,7 @@ cd backend
 npm run treasury:deposit <AMOUNT> <TOKEN>
 
 i.e.
-npm run treasury: deposit 10 SUI
+npm run treasury:deposit 10 SUI
 ```
 
 8. **Test**:

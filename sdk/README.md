@@ -72,7 +72,6 @@ sdk.wrapButton("#pay-btn", {
   amount: 29.99,
   currency: "USD",
   metadata: { sku: "PRO-PLAN" },
-  settlementToken: "USDC",     // optional
 });
 ```
 
@@ -89,6 +88,7 @@ For simple demos you can serve the built SDK bundle from any static host. Build 
 | `merchantAddress` | `string` | Yes | Sui address that receives settlement |
 | `mode` | `"local" \| "test" \| "live"` | No | Default: `"live"`. `"local"` → `http://localhost:5000` (testnet), `"test"` → `https://api.staging.suioutkit.xyz` (testnet), `"live"` → `https://api.suioutkit.xyz` (mainnet). |
 | `backendUrl` | `string` | No | Override API origin (no trailing slash). Takes precedence over `mode`. |
+| `settlementToken` | `string \| string[]` | No | Default settlement token(s) used as a fallback when `initCheckout` does not specify one. |
 
 The SDK automatically sets `window.SuiOutKitNetwork` to the correct Sui network based on `mode` - no manual `<script>` tag needed.
 
@@ -117,10 +117,12 @@ const session = await sdk.initCheckout({
 | `currencySymbol` | Currency symbol (e.g. `€`, `R`, `₦`) |
 | `merchantAddress` | Normalized Sui address |
 | `coinType` | Settlement coin type (from backend config) |
-| `supportedCoins` | Array of `{ symbol, type, decimals, category }` for available settlement coins |
-| `settlementToken` | Normalized settlement token(s) as `string[]` |
+| `supportedCoins` | Array of `{ symbol, type, decimals }` for available settlement coins |
+| `settlementToken` | Settlement token(s), either a single `string` or `string[]` |
 | `estimatedRate` | FX preview (fiat → token) when applicable |
 | `supportedFiatCurrencies` | Array of supported fiat currency codes |
+| `localAmount`, `localCurrency` | Customer-facing amount/currency when different from the merchant's (cross-region) |
+| `walrusBlobId` | Receipt blob ID when available (set once the upload queue processes the invoice) |
 | `packageId`, `cryptoRegistryId`, `cryptoRegistryName` | On-chain config for crypto paths |
 
 Throws if the backend returns a non-OK response.
@@ -128,7 +130,7 @@ Throws if the backend returns a non-OK response.
 ---
 
 ### `openModal(session, options?)`
-Opens the built-in checkout modal (bank transfer, OPay, Stripe, Sui wallet, outPay).
+Opens the built-in checkout modal (bank transfer, OPay, USSD, Stripe, Sui wallet, outPay).
 
 ```ts
 const modal = sdk.openModal(session, {

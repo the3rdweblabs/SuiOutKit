@@ -5,6 +5,21 @@ description: Release history and notable changes for SuiOutKit.
 
 All notable changes to SuiOutKit are documented here. This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [1.4.1] - 2026-07-28
+
+### Fixed
+
+- Walrus upload race condition: `verifyCryptoPaymentTx` and `verifyFiatSettlementTx` switched from `getTransaction` to `waitForTransaction` to eliminate the fullnode indexing race.
+- Deterministic blob IDs: `prepareInvoice()` signs the invoice once and returns the `signedPayload`, stored in Redis as `cryptoWalrusSignedPayload` and reused during upload so the blob ID is always deterministic.
+- Non-blocking receipt pipeline: `prepareInvoice()` is now encode-only in both SDK and publisher modes (~1s). Receipt uploads run after PTB confirmation via a Redis-backed queue (`walrus-queue.ts`) and never block the checkout response.
+- OPay waiting panel text now updates to "Payment received. Settling on-chain..." once the backend detects payment progress (postMessage handler + polling fallback for any non-`PENDING`/`EXPIRED` status).
+
+### Changed
+
+- SDK payment status steps reordered: Payment received → Webhook confirmed → Settled on-chain → Receipt uploaded.
+- Removed dead `BANK_CONFIRMED` badge state from SDK status types and badge UI.
+- `WALRUS_OPERATOR_PRIVATE_KEY` now required in all upload modes (needed by `prepareInvoice()` encoding).
+
 ## [1.0.0] - 2026-07-25
 
 ### Added

@@ -8,7 +8,7 @@ This guide explains how the SuiOutKit platform is structured and how the SDK com
 **Merchants** use the hosted API - currently `https://api.staging.suioutkit.xyz` (testnet), with `https://api.suioutkit.xyz` (mainnet) planned for production go-live. Routes under `/v1/` (SDK `mode: "live"` default). See [Hosted API](/docs/hosted-api) for the deploy checklist and route map.
 
 ## Overview
-SuiOutKit is a settlement system for payment methods that eventually resolve into Sui-based settlement. Developers integrate the browser SDK published as [`suioutkit`](https://www.npmjs.com/package//suioutkit), while the backend handles payment provider calls, treasury validation, receipt storage, and on-chain settlement.
+SuiOutKit is a settlement system for payment methods that eventually resolve into Sui-based settlement. Developers integrate the browser SDK published as [`suioutkit`](https://www.npmjs.com/package/suioutkit), while the backend handles payment provider calls, treasury validation, receipt storage, and on-chain settlement.
 
 The architecture is intentionally split:
 
@@ -20,7 +20,7 @@ The architecture is intentionally split:
 - [`sdk/`](/sdk/) - NPM package for merchants
 - [`backend/`](/backend/) - Express + TypeScript backend
 - [`contracts/`](/contracts/) - Move contracts and tests
-- [`demo/demo.html`](/demo/demo.html) and [`demo/demo-e2e.html`](/demo/demo-e2e.html) - browser demos
+- [`demo/demo.html`](/demo/demo.html), [`demo/demo-e2e.html`](/demo/demo-e2e.html), [`demo/demo(multi-currency).html`](/demo/demo(multi-currency).html) - browser demos
 
 ## Checkout Flow
 ### 1. Create Session
@@ -62,7 +62,7 @@ After the payment provider confirms success, it sends a webhook to the backend:
 
 - `POST /v1/checkout/webhook`
 
-The backend validates the webhook, uploads the receipt metadata to Walrus, and executes the Sui settlement PTB.
+The backend validates the webhook, then executes the Sui settlement PTB. Once the PTB confirms, the backend enqueues the pre-signed receipt payload to the Walrus upload queue; a background worker uploads the blob without blocking the response.
 
 ### 4. Settlement Status
 The SDK or merchant UI can poll:
@@ -124,63 +124,65 @@ Request body:
 {
   "token": "checkout-session-token",
   "method": "bank_transfer",
-  "phoneNumber": "+234..."
+  "phoneNumber": "+234...",
+  "accountBank": "044"
 }
 ```
+
+`phoneNumber` is required for `opay`; `accountBank` is required for `ussd`. Responses vary by method: `bank_transfer` returns `{status, virtualAccount, validatedRate}`, `opay` returns `{status, opayAuthorizationUrl, validatedRate}`, `ussd` returns `{status, ussdCode, paymentCode, validatedRate}`, and `stripe` returns `{status, clientSecret, stripePublicKey, validatedRate}`.
 
 ### `GET /v1/checkout/status/:nonce`
 Returns settlement state and on-chain receipt data.
 
 ### `GET /v1/checkout/validate/:nonce`
-Performs a treasury pre-flight check using the current rate before the user proceeds.
+Fetches a fresh FX rate for the session and returns `{coinType, exchangeRate, settlementAmount, message}` so the UI can display the current settlement estimate before the user proceeds.
 
 ## Environment Variables
 The backend uses the following variables from [`backend/.env`](/backend/.env):
 
 - `PORT`
 - `PUBLIC_URL` - public base URL for OPay callback redirect (default `http://localhost:5000`)
-- `REDIS_MODE` - `local` (standalone Redis) or `live` (Upstash/REST)
-- `REDIS_URL` - connection string (used in `local` mode)
+- `REDIS_MODE` - `local`, `demo`, or `live` (Upstash/REST)
+- `REDIS_URL` - connection string (used in `local`/`demo` mode)
 - `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_TLS_ENABLED` - Redis config for `local` mode
-- `SESSION_TTL` - checkout session expiry in seconds
+- `SESSION_TTL` - checkout session expiry in seconds (default `86400`)
 - `STRIPE_MODE` - `test` or `live` (default `test`)
-- `STRIPE_PUBLIC_KEY_test` / `STRIPE_PUBLIC_KEY_live` - Stripe publishable key per mode
+- `STRIPE_PUBLIC_KEY_test` / `STRIPE_PUBLIC_KEY_live` - Stripe publishable key per mode (falls back to flat `STRIPE_PUBLIC_KEY`)
 - `STRIPE_SECRET_KEY_test` / `STRIPE_SECRET_KEY_live` - Stripe secret per mode
 - `STRIPE_WEBHOOK_SECRET_test` / `STRIPE_WEBHOOK_SECRET_live` - Stripe webhook signing secret per mode
 - `FLW_API_BASE` - Flutterwave API base URL
 - `FLW_MODE` - `test` or `live` (default `test`)
-- `FLW_PUBLIC_KEY_test` / `FLW_PUBLIC_KEY_live` - Flutterwave public key per mode
 - `FLW_SECRET_KEY_test` / `FLW_SECRET_KEY_live` - Flutterwave secret per mode
 - `FLW_HASH_test` / `FLW_HASH_live` - Webhook verification hash per mode
 - `WALRUS_UPLOAD_MODE`
 - `WALRUS_EPOCHS`
 - `WALRUS_DELETABLE`
 - `WALRUS_USE_UPLOAD_RELAY`
-- `WALRUS_UPLOAD_RELAY_URL`
+- `WALRUS_UPLOAD_RELAY_URL_testnet` / `WALRUS_UPLOAD_RELAY_URL_mainnet`
 - `WALRUS_UPLOAD_RELAY_MAX_TIP`
-- `WALRUS_PUBLISHER_URL`
-- `SUI_GRPC_ENDPOINT`
-- `SUI_GRAPHQL_ENDPOINT`
+- `WALRUS_PUBLISHER_URL_testnet` - publisher is testnet-only; mainnet uses SDK mode
+- `WALRUS_OPERATOR_PRIVATE_KEY` - required in all modes (receipt signing + blob ID encoding)
+- `SUI_GRPC_ENDPOINT_testnet` / `SUI_GRPC_ENDPOINT_mainnet`
+- `SUI_GRAPHQL_ENDPOINT_testnet` / `SUI_GRAPHQL_ENDPOINT_mainnet`
 - `SUI_NETWORK`
-- `PACKAGE_ID`
+- `PACKAGE_ID_testnet` / `PACKAGE_ID_mainnet`
 - `PAYMENT_KIT_PACKAGE_ID_testnet` / `PAYMENT_KIT_PACKAGE_ID_mainnet` - Payment Kit registry package (outPay flow)
-- `TREASURY_ID`
-- `TREASURY_ADMIN_CAP_ID` - optional TreasuryAdminCap override
+- `TREASURY_ID_testnet` / `TREASURY_ID_mainnet`
+- `TREASURY_ADMIN_CAP_ID_testnet` / `TREASURY_ADMIN_CAP_ID_mainnet` - optional TreasuryAdminCap override
 - `SUPPORTED_COINS` - JSON map of settlement coins (primary config, replaces `SETTLEMENT_TOKEN_TYPE`)
 - `SUPPORTED_COINS_TESTNET` - Network-specific override loaded when `SUI_NETWORK=testnet`. Falls back to `SUPPORTED_COINS`.
 - `SUPPORTED_COINS_MAINNET` - Network-specific override loaded when `SUI_NETWORK=mainnet`. Falls back to `SUPPORTED_COINS`.
 - `DEFAULT_COIN` - default settlement coin symbol (default `SUI`)
 - `SETTLEMENT_TOKEN_TYPE` - legacy fallback when `SUPPORTED_COINS` is not set
-- `FIAT_REGISTRY_ID`
+- `FIAT_REGISTRY_ID_testnet` / `FIAT_REGISTRY_ID_mainnet`
 - `FIAT_REGISTRY_NAME` - registry name string (e.g. `suioutkit-fiat-settlements`)
-- `FIAT_REGISTRY_ADMIN_CAP_ID`
-- `CRYPTO_REGISTRY_ID`
+- `FIAT_REGISTRY_ADMIN_CAP_ID_testnet` / `FIAT_REGISTRY_ADMIN_CAP_ID_mainnet`
+- `CRYPTO_REGISTRY_ID_testnet` / `CRYPTO_REGISTRY_ID_mainnet`
 - `CRYPTO_REGISTRY_NAME`
-- `CRYPTO_REGISTRY_ADMIN_CAP_ID`
+- `CRYPTO_REGISTRY_ADMIN_CAP_ID_testnet` / `CRYPTO_REGISTRY_ADMIN_CAP_ID_mainnet`
 - `SUI_OPERATOR_PRIVATE_KEY`
-- `WALRUS_OPERATOR_PRIVATE_KEY`
 - `DEFAULT_CURRENCY` - default fiat currency when none specified (default `USD`)
-- `SUPPORTED_FIAT_CURRENCIES` - comma-separated list of allowed fiat codes (empty = all 40+)
+- `SUPPORTED_FIAT_CURRENCIES` - comma-separated list of allowed fiat codes (empty = all 40)
 - `ENABLE_GEO_DETECTION` - IP-based currency auto-detection (default `false`)
 - `COINGECKO_API_MODE` - `demo`, `pro`, or empty (free tier)
 - `COINGECKO_API_KEY_DEMO` - CoinGecko Demo API key (higher rate limits)
@@ -262,7 +264,7 @@ The treasury does not hold enough of the requested coin type. Verify the operato
 The FX service failed to fetch the current rate from CoinGecko. Check network availability, API key configuration (`COINGECKO_API_MODE`), and backend logs. The service falls back to cached rates, then to hardcoded defaults.
 
 ### Walrus upload fails
-Try enabling the upload relay or switching to publisher mode in the backend environment.
+Try enabling the upload relay or switching to SDK mode. In `publisher` mode, mainnet has no public publisher - use `WALRUS_UPLOAD_MODE=sdk`. Uploads run via the Redis queue worker (`walrus-queue.ts`), which retries up to 3 times; check backend logs for `WALRUS-QUEUE` entries.
 
 ## CI, Docker Compose & Testing
 CI goals:

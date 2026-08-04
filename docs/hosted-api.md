@@ -51,7 +51,7 @@ Unversioned paths on the same host (not under `/v1/`):
 |--------|------|
 | `GET` | `/v1/checkout/opay/callback` |
 
-After OPay authorization, Flutterwave redirects the user's browser to this route. The backend verifies the transaction, marks the checkout settled, and redirects to the merchant's origin. The URL is derived from `PUBLIC_URL`.
+After OPay authorization, Flutterwave redirects the user's browser to this route. The route renders an HTML page that posts a `suioutkit_opay_complete` message back to the opening window and auto-closes; settlement is handled by background polling and the Flutterwave webhook, not by this callback. The URL is derived from `PUBLIC_URL`.
 
 ### Payments (SDK - SSE)
 
@@ -79,7 +79,7 @@ Configure Flutterwave and Stripe dashboards to these URLs on the **production** 
 | `sui_wallet` | Sui + Payment Kit | Wallet connect |
 | `outpay` | Payment Kit QR | QR-based outPay flow |
 
-NGN customers see all fiat methods; non-NGN customers see card and crypto only. Cross-region payments are supported - a USD-settled merchant can accept NGN from a Nigerian customer via Flutterwave/provider's local rails.
+NGN customers see bank transfer, OPay, USSD, card, and crypto. GHS customers see bank transfer, card, and crypto. Other customers see card and crypto. Cross-region payments are supported - a USD-settled merchant can accept NGN from a Nigerian customer via Flutterwave's local rails.
 
 ## Merchant integration (no codebase required)
 
@@ -102,7 +102,7 @@ const session = await sdk.initCheckout({
 sdk.openModal(session);
 ```
 
-40+ fiat currencies supported - see [Currencies](/docs/guides/currencies) for the full list.
+40 fiat currencies supported - see [Currencies](/docs/guides/currencies) for the full list.
 
 Merchants do **not** need to clone this repo, run Docker, or manage `backend/.env`.
 
