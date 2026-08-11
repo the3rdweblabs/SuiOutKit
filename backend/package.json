@@ -28,7 +28,7 @@
   "dependencies": {
     "@mysten/payment-kit": "^0.2.8",
     "@mysten/sui": "^2.22.1",
-    "@mysten/walrus": "^1.2.9",
+    "@mysten/walrus": "^1.2.13",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
