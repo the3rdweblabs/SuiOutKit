@@ -26,20 +26,20 @@
   "author": "SuiOutKit Team",
   "license": "AGPL-3.0-only-or-later",
   "dependencies": {
-    "@mysten/payment-kit": "^0.2.8",
-    "@mysten/sui": "^2.22.1",
-    "@mysten/walrus": "^1.2.9",
+    "@mysten/payment-kit": "^0.2.18",
+    "@mysten/sui": "^2.26.2",
+    "@mysten/walrus": "^1.2.19",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "ioredis": "^5.11.1",
+    "ioredis": "^6.0.0",
     "node-fetch": "^3.3.2",
-    "stripe": "^22.3.2"
+    "stripe": "^22.5.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.2.0",
     "nodemon": "^3.1.14",
     "typescript": "^7.0.2"
   }
